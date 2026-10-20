@@ -55,6 +55,14 @@ The setup script needs internet once. It installs Stockfish, Tkinter, the chess-
 `python-chess` (with `--no-deps`, so it never upgrades NumPy or OpenCV) and pytest. It only adds
 things, so Robo keeps working, and it's safe to run again. At the end it runs the check below.
 
+If apt says a release file is **"not valid yet"**, the Jetson's clock is wrong (the script checks
+this first). Set it, then run the script again:
+
+```bash
+sudo timedatectl set-ntp true
+sudo date -s "$(curl -sI http://google.com | grep -i '^date:' | cut -d' ' -f2-)"
+```
+
 ### 3. Check everything is installed
 
 ```bash
