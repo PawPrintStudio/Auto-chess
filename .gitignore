@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+
+# Models and ROS build output
+*.pt
+*.engine
+*.onnx
+build/
+install/
+log/
