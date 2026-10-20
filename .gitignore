@@ -11,3 +11,6 @@ venv/
 build/
 install/
 log/
+
+# Saved games and per-robot calibration
+data/
