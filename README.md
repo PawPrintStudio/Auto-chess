@@ -14,8 +14,8 @@ It runs on the same Jetson and the same arm as
 (Texas State University). Everything this project inherits from Robo (hardware, Jetson setup,
 arm coordinates, safety rules) is written down in [docs/robo_handoff.md](docs/robo_handoff.md).
 
-> **Status:** the chess core (Stockfish levels, chess clock, game loop) is done and tested with a
-> pretend arm. Still to come: the screen, the arm, the camera, and the launch scripts.
+> **Status:** the chess core and the screen are done and work with a pretend arm (you click your
+> moves on the screen). Still to come: the arm, the camera, and the launch scripts.
 
 ---
 
@@ -77,6 +77,24 @@ python3.10 -m venv .venv
 .venv/bin/python -m pytest -q
 ```
 
+## Running it
+
+For now only the pretend mode works: the arm's moves are printed in the terminal, and you make
+your moves by clicking a piece and then its square on the screen.
+
+```bash
+python3 -m autochess --pretend               # on the Jetson (or .venv/bin/python on a Mac)
+python3 -m autochess --pretend --fullscreen  # fill the screen; Esc leaves full screen
+```
+
+- **Play the robot:** type your name, pick a difficulty, your colour and the time, then Start.
+  Make your move and press **Done** (or Enter or Space) to stop your clock. Resign at any time.
+- **Watch robot vs robot:** pick a difficulty for White and for Black, and the time, then Start.
+  Stop game ends it early.
+- The robot's clock only counts its thinking time, not the time the arm spends moving.
+- Finished games are saved in `data/results.jsonl` (not in git). The start screen shows a
+  leaderboard of wins against the robot for each difficulty.
+
 ## How the code is organised
 
 | File | What it does |
@@ -84,13 +102,16 @@ python3.10 -m venv .venv
 | `autochess/engine.py` | Stockfish with four levels: Beginner, Easy, Medium, Hard (skill level and thinking time) |
 | `autochess/clock.py` | Chess clock: 10/15/30/60-minute presets, never under 10; only thinking time counts, not arm movement |
 | `autochess/game.py` | One game: whose turn, the robot's moves, the human's Done button, resigning, checkmate, draws, running out of time |
+| `autochess/gui.py` | The screen: start screen (mode, name, difficulty, colour, time, leaderboard) and game screen (board, clocks, moves, Done, Resign) |
+| `autochess/results.py` | Saves each finished game and builds the leaderboard |
+| `autochess/__main__.py` | Starts it all: `python3 -m autochess` |
 | `autochess/pretend.py` | A pretend arm and pretend eyes, so everything runs without the robot |
 | `tests/` | Tests (`python -m pytest -q`) |
 
 ## Plan
 
 1. ~~Chess core: Stockfish levels, clock, game loop.~~ Done.
-2. Screen: start screen (name, difficulty, time, colour), game screen (board, clocks, Done, Resign), saved results and a leaderboard.
+2. ~~Screen: start screen, game screen, saved results and a leaderboard.~~ Done.
 3. Arm: board positions for the hanging arm, pick and place, captures, castling, en passant, promotion. Simulation first.
 4. Camera: 4-corner board calibration, spotting the human's move by comparing the board before and after.
 5. Put it together on the Jetson, with a launch and a stop script.
