@@ -36,7 +36,7 @@ nothing needs installing again.
 
 ```bash
 cd ~/Documents
-git clone <this repository's URL> Auto-chess
+git clone https://github.com/PawPrintStudio/Auto-chess.git
 ```
 
 ### 3. Before running anything, stop Robo
