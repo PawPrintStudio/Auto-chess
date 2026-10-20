@@ -42,21 +42,31 @@ in `~/colcon_ws`, the base-servo gains, the 25 W power mode and the Python versi
 are in [docs/robo_handoff.md](docs/robo_handoff.md), section 4. If the Jetson already runs Robo,
 none of that needs installing again.
 
-Then add Stockfish and the chess package (keeping NumPy below 2):
-
-```bash
-sudo apt install stockfish
-pip3 install --user "chess==1.11.2" "numpy<2"
-```
-
-### 2. Get this repository
+### 2. Get this repository and install what Auto-chess adds
 
 ```bash
 cd ~/Documents
 git clone https://github.com/PawPrintStudio/Auto-chess.git
+cd Auto-chess
+./setup/jetson_setup.sh
 ```
 
-### 3. Before running anything, stop Robo
+The setup script needs internet once. It installs Stockfish, Tkinter, the chess-piece font,
+`python-chess` (with `--no-deps`, so it never upgrades NumPy or OpenCV) and pytest. It only adds
+things, so Robo keeps working, and it's safe to run again. At the end it runs the check below.
+
+### 3. Check everything is installed
+
+```bash
+python3 -m autochess.check
+```
+
+It checks Python, the packages and their version pins, Stockfish (all four levels), a full
+robot-vs-robot game with the pretend arm, ROS 2 Humble, the ROBOTIS packages, the base-servo gains
+and the `dialout` group. **FAIL** lines must be fixed. **WARN** lines are fine until the robot is
+set up: the arm port (`/dev/ttyACM0`), the camera, the power mode, and whether Robo is running.
+
+### 4. Before running anything, stop Robo
 
 Only one program can use the arm and the camera at a time.
 
@@ -105,6 +115,8 @@ python3 -m autochess --pretend --fullscreen  # fill the screen; Esc leaves full 
 | `autochess/gui.py` | The screen: start screen (mode, name, difficulty, colour, time, leaderboard) and game screen (board, clocks, moves, Done, Resign) |
 | `autochess/results.py` | Saves each finished game and builds the leaderboard |
 | `autochess/__main__.py` | Starts it all: `python3 -m autochess` |
+| `autochess/check.py` | Checks every dependency: `python3 -m autochess.check` |
+| `setup/jetson_setup.sh` | Installs what Auto-chess adds on the Jetson |
 | `autochess/pretend.py` | A pretend arm and pretend eyes, so everything runs without the robot |
 | `tests/` | Tests (`python -m pytest -q`) |
 
