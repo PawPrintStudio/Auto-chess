@@ -1,6 +1,7 @@
 """One game of chess: robot vs robot, or human vs robot.
 
 The game runs in its own thread and reports what happens through on_event(kind, data):
+  "preparing" the arm is going to its home pose     {}
   "turn"      a side is to move                    {side, player}
   "thinking"  the robot is choosing a move         {side}
   "arm"       the arm is playing the robot's move  {side, move, san}
@@ -13,7 +14,8 @@ The arm and the eyes (camera) are passed in, so the same game runs with the real
 camera on the Jetson or with pretend ones anywhere:
   arm.play(board, move)   plays move on the real board (board is the position before it)
   eyes.read_move(board)   the move the human just made, or None
-If the arm has an `ask` attribute, the game sets it to a function the arm calls when it needs a
+If the arm has a `prepare()` method, the game calls it first, to send the arm to its home pose;
+if that fails the game ends before it starts. If the arm has an `ask` attribute, the game sets it to a function the arm calls when it needs a
 person to finish a move by hand: it shows the text and waits for Done.
 """
 import threading
@@ -86,6 +88,13 @@ class Game:
     # ---- the game ----
     def run(self):
         try:
+            if hasattr(self.arm, "prepare"):
+                self._emit("preparing")
+                try:
+                    self.arm.prepare()
+                except Exception as e:      # the arm refused or failed to move: don't start
+                    self._finish("*", f"The arm couldn't get to its home pose: {e}")
+                    return
             while self.result is None:
                 if self._interrupted():
                     break

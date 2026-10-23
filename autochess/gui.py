@@ -334,7 +334,9 @@ class App:
         if not self.game or not hasattr(self, "status") or not self.status.winfo_exists():
             return
         g = self.game
-        if kind == "turn":
+        if kind == "preparing":
+            self._say(f"{ROBOT_NAME} is moving to its home pose...")
+        elif kind == "turn":
             p = data["player"]
             if p.kind == "human":
                 how = "click a piece, then its square" if self.clickable else "move a piece on the board"

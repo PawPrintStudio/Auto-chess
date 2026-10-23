@@ -125,3 +125,41 @@ def test_whole_robot_game_with_the_arm():
         e.close()
     assert len(moves) >= 30 or g.result != "*"
     assert all(a.startswith("Please put a") for a in asks), asks
+
+
+def test_every_game_starts_by_going_home():
+    import shutil
+    from autochess.engine import Engine, Level
+    from autochess.game import Game, Player
+    from autochess.kinematics import PARK
+    if not shutil.which("stockfish"):
+        pytest.skip("Stockfish not installed")
+    e = Engine(levels={"Fast": Level("Fast", 0, 0.01, 1)})
+    try:
+        ros = FakeRos()
+        ros.q = (1.40, -0.22, -1.27, -1.10)           # left bent, as seen on the real arm
+        arm = RealArm(ros, my_board(), log=lambda s: None)
+        g = Game(Player("robot", "A", "Fast"), Player("robot", "B", "Fast"), 10, e, arm)
+        events = []
+
+        def on_event(kind, data):
+            events.append((kind, ros.q))
+            if kind == "turn":
+                g.stop()
+        g._on_event = on_event
+        g.run()
+    finally:
+        e.close()
+    assert events[0][0] == "preparing"
+    kind, q_at_first_turn = events[1]
+    assert kind == "turn" and q_at_first_turn[1:] == pytest.approx(PARK)
+
+
+def test_game_does_not_start_if_the_arm_cannot_get_home():
+    from autochess.game import Game, Player
+    ros = FakeRos()
+    ros.q = (0.0, 0.0, -1.9, 0.0)                     # slumped past the elbow limit
+    g = Game(Player("robot", "A", "Fast"), Player("robot", "B", "Fast"), 10, None,
+             RealArm(ros, my_board(), log=lambda s: None))
+    g.run()
+    assert g.result == "*" and "home pose" in g.reason and g.board.move_stack == []

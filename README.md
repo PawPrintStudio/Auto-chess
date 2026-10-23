@@ -206,6 +206,11 @@ python3 -m autochess
 It asks before parking the arm, then opens the screen. Choose **Watch robot vs robot** for the arm
 to play itself, or **Play the robot**.
 
+Every time someone presses **Start**, the arm first goes to its home (park) pose from wherever it
+is, by the same safe route as `autochess.park` (the screen says so), so a game always starts from
+the same place even if the arm was moved by hand. If it can't get there safely, the game doesn't
+start and the screen says why.
+
 **Switching off:** the arm goes limp and swings down. Park it first, then hold it while you
 switch off the 12 V.
 

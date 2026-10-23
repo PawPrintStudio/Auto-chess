@@ -75,11 +75,15 @@ class RealArm:
         self.holding, self.held = False, None    # held: (square it came from, piece)
 
     def start(self):
-        """Check the arm's angles are sensible, then park. Raises ValueError/Unsafe if not."""
-        self.mover.refresh()
-        for q4, seconds in plan(self.mover.q):        # the same safe route as autochess.park
+        """Go to the home (park) pose from wherever the arm is now, by the same safe route as
+        autochess.park, and open the gripper. Raises ValueError/Unsafe if it can't do so safely."""
+        self.mover.refresh()                           # the arm may have been moved by hand
+        for q4, seconds in plan(self.mover.q):
             self.mover.joint_move(q4, seconds=seconds)
         self.ros.gripper(self.geo.gripper_open)
+        self.holding = False
+
+    prepare = start             # the game calls this at the start of every game
 
     def play(self, board, move):
         steps = plan_steps(board, move)

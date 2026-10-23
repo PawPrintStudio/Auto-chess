@@ -40,6 +40,8 @@ def plan(current):
                          "let it hang straight down, then try again.")
     base = float(np.clip(current[0], *LIMITS[0]))
     a, park = np.array(current[1:], float), np.array(PARK)
+    if np.max(np.abs(a - park)) < 0.02:
+        return []                                   # already there
     # 10 mm of slack: swinging out of a limp, straight-down hang dips a few mm (the upper arm's offset)
     allowed = lowest(a) + 10
     routes = [[a, park]]
@@ -98,7 +100,7 @@ def main():
         for q4, seconds in moves:
             if not arm.move(q4, seconds):
                 sys.exit("The move didn't finish: check the arm and the bringup terminal.")
-        print("Parked.")
+        print("Parked." if moves else "Already parked.")
     finally:
         arm.close()
 
