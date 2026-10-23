@@ -6,12 +6,15 @@ The game runs in its own thread and reports what happens through on_event(kind, 
   "arm"       the arm is playing the robot's move  {side, move, san}
   "moved"     a move was made                      {side, move, san}
   "bad_move"  no legal move seen after Done        {side}
+  "help"      the arm needs a person; Done when done {text}
   "game_over" the game ended                       {result, reason}
 
 The arm and the eyes (camera) are passed in, so the same game runs with the real arm and
 camera on the Jetson or with pretend ones anywhere:
   arm.play(board, move)   plays move on the real board (board is the position before it)
   eyes.read_move(board)   the move the human just made, or None
+If the arm has an `ask` attribute, the game sets it to a function the arm calls when it needs a
+person to finish a move by hand: it shows the text and waits for Done.
 """
 import threading
 import time
@@ -57,6 +60,8 @@ class Game:
         self._thread = None
         self.result = None    # "1-0", "0-1", "1/2-1/2" or "*" (stopped)
         self.reason = None
+        if hasattr(arm, "ask"):
+            arm.ask = self._ask_help
 
     # ---- called from the GUI ----
     def start(self):
@@ -134,6 +139,14 @@ class Game:
                 return move
             self._emit("bad_move", side=side)
             self.clock.run(side)
+
+    def _ask_help(self, text):
+        """The arm needs a person: show text and wait for Done (or for the game to be stopped)."""
+        self._done.clear()
+        self._emit("help", text=text)
+        while not self._stop.is_set() and not self._done.wait(0.05):
+            pass
+        self._done.clear()
 
     def _interrupted(self):
         """True (and the result set) if the game was stopped or someone resigned."""

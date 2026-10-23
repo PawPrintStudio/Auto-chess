@@ -27,6 +27,7 @@ class RosArm:
             rclpy.init()
         self.node = Node("autochess_arm")
         self._angles = None
+        self._gripper = None
         self._lock = threading.Lock()
         self.node.create_subscription(JointState, "/joint_states", self._on_joints, 10)
         self._arm = ActionClient(self.node, FollowJointTrajectory, "/arm_controller/follow_joint_trajectory")
@@ -37,9 +38,11 @@ class RosArm:
 
     def _on_joints(self, msg):
         pos = dict(zip(msg.name, msg.position))
-        if all(j in pos for j in JOINTS):
-            with self._lock:
+        with self._lock:
+            if all(j in pos for j in JOINTS):
                 self._angles = tuple(pos[j] for j in JOINTS)
+            if "gripper_left_joint" in pos:
+                self._gripper = pos["gripper_left_joint"]
 
     def angles(self, timeout=10.0):
         """(base, shoulder, elbow, wrist) in radians, or None if the arm isn't reporting."""
@@ -53,32 +56,46 @@ class RosArm:
 
     def move(self, q4, seconds):
         """Move all four joints to q4 over `seconds`, and wait. Returns True if it got there."""
+        return self.move_path([q4], [seconds])
+
+    def move_path(self, points, times):
+        """Pass through each q4 in points, reaching point i at times[i] seconds from now; wait."""
         if not self._arm.wait_for_server(timeout_sec=10.0):
             raise RuntimeError("the arm controller isn't running (start the arm bringup first)")
         goal = FollowJointTrajectory.Goal()
         goal.trajectory.joint_names = JOINTS
-        sec = int(seconds)
-        goal.trajectory.points = [JointTrajectoryPoint(
-            positions=[float(a) for a in q4],
-            time_from_start=Duration(sec=sec, nanosec=int((seconds - sec) * 1e9)))]
-        return self._send(self._arm, goal, seconds + 10)
+        for q4, t in zip(points, times):
+            sec = int(t)
+            goal.trajectory.points.append(JointTrajectoryPoint(
+                positions=[float(a) for a in q4],
+                time_from_start=Duration(sec=sec, nanosec=int((t - sec) * 1e9))))
+        done = self._send(self._arm, goal, times[-1] + 10)
+        return done is not None and done.status == 4      # GoalStatus.STATUS_SUCCEEDED
 
     def gripper(self, position, effort=100.0):
+        """Open or close the gripper. Returns where the fingers stopped (m), or None if it failed.
+        Closing on a piece stops early; closing on nothing goes all the way to GRIPPER_CLOSED."""
         if not self._grip.wait_for_server(timeout_sec=10.0):
             raise RuntimeError("the gripper controller isn't running")
         goal = GripperCommand.Goal()
         goal.command.position = float(position)
         goal.command.max_effort = float(effort)
-        return self._send(self._grip, goal, 10)
+        done = self._send(self._grip, goal, 10)
+        if done is None:
+            return None
+        time.sleep(0.2)
+        with self._lock:
+            finger = self._gripper
+        return finger if finger is not None else done.result.position
 
     def _send(self, client, goal, timeout):
         sent = client.send_goal_async(goal)
         if not _wait(sent, 10) or not sent.result().accepted:
-            return False
+            return None
         done = sent.result().get_result_async()
         if not _wait(done, timeout):
-            return False
-        return done.result().status == 4      # GoalStatus.STATUS_SUCCEEDED
+            return None
+        return done.result()
 
     def close(self):
         self._exec.shutdown()

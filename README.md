@@ -14,8 +14,10 @@ It runs on the same Jetson and the same arm as
 (Texas State University). Everything this project inherits from Robo (hardware, Jetson setup,
 arm coordinates, safety rules) is written down in [docs/robo_handoff.md](docs/robo_handoff.md).
 
-> **Status:** the chess core and the screen are done and work with a pretend arm (you click your
-> moves on the screen). Still to come: the arm, the camera, and the launch scripts.
+> **Status:** the chess core, the screen and the arm are written. Robot vs robot runs on the real
+> arm with no camera needed; in human games you also click your move on the screen until the camera
+> step is done. Tested with a fake arm on a Mac; **not yet run on the real arm.** Still to come: the
+> camera, and the launch and stop scripts.
 
 ---
 
@@ -24,14 +26,16 @@ arm coordinates, safety rules) is written down in [docs/robo_handoff.md](docs/ro
 | Part | Details |
 |---|---|
 | Arm | OpenMANIPULATOR-X, 5 DYNAMIXEL XM430-W350-T servos (IDs 11–15), 12 V |
-| Mount | upside down on a frame, base plate about 400–425 mm above the centre of the board |
+| Mount | upside down from an aluminium-extrusion frame: the bottom of the base plate **430 mm** (420–440) above the top of the board, the base axis within about 2 cm of the board centre |
 | Controller board | OpenCR 1.0 with ROBOTIS `usb_to_dxl` firmware, on `/dev/ttyACM0` |
 | Computer | NVIDIA Jetson Orin NX 16GB, Ubuntu 22.04, JetPack 6, Python 3.10 |
-| Camera | looking down at the board |
-| Board | wooden board, 40 mm squares (320 mm playing area); tallest piece (king) 80 mm |
+| Camera | Logitech BRIO, to look down at the board (not used yet) |
+| Board | wooden board, 305 × 305 mm, squares about 38–40 mm; tallest piece (king) 80 mm |
+| Bin | a small box beside the board, within about 20 cm of the point under the base, for captured pieces |
 
-Why upside down: on the table the arm can't reach the far rows of a 40 mm board. Hanging
-400–425 mm above the board centre, it reaches every square (gripper tilted up to 20–30°).
+Why upside down: standing on the table, the arm can't reach the far rows of this board. Hanging
+430 mm above the board centre, it reaches every square (gripper tilted up to 30°). The base turns
+up to ±178° (more than Robo's ±160°), so leave enough slack in its cables for that.
 
 ## Setting up
 
@@ -97,13 +101,21 @@ python3.10 -m venv .venv
 
 ## Running it
 
-For now only the pretend mode works: the arm's moves are printed in the terminal, and you make
-your moves by clicking a piece and then its square on the screen.
+With the real arm (after the steps in [Playing with the real arm](#playing-with-the-real-arm)):
 
 ```bash
-python3 -m autochess --pretend               # on the Jetson (or .venv/bin/python on a Mac)
-python3 -m autochess --pretend --fullscreen  # fill the screen; Esc leaves full screen
+python3 -m autochess                # the real arm
+python3 -m autochess --fullscreen   # fill the screen; Esc leaves full screen
 ```
+
+Without the arm, the pretend mode prints the arm's moves in the terminal instead:
+
+```bash
+python3 -m autochess --pretend      # on the Jetson (or .venv/bin/python on a Mac)
+```
+
+Until the camera is connected, in human games you move your piece on the board **and** click it
+on the screen (the piece, then its square), then press Done.
 
 - **Play the robot:** type your name, pick a difficulty, your colour and the time, then Start.
   Make your move and press **Done** (or Enter or Space) to stop your clock. Resign at any time.
@@ -113,43 +125,87 @@ python3 -m autochess --pretend --fullscreen  # fill the screen; Esc leaves full 
 - Finished games are saved in `data/results.jsonl` (not in git). The start screen shows a
   leaderboard of wins against the robot for each difficulty.
 
-## The park pose (hanging arm)
+## Playing with the real arm
 
-The arm hangs upside down, so ROBOTIS's "home" (all joints at 0) isn't a good resting pose: it
-sticks the forearm and gripper out sideways about 30 cm. Auto-chess uses a **park pose** instead:
-folded up under the beam, about 19 cm above the board (the king is 8 cm), sticking out only about
-12 cm, and at least 7 cm clear of the mount plate. Before moving, `autochess.park` checks that:
+Do these in order the first time. Afterwards, only steps 1–3 and 7 are needed.
 
-- the arm reports angles inside its limits (a limp arm hangs just past the elbow limit, which is allowed),
-- the whole move stays clear of the plate and the base servo,
-- the arm never goes lower on the way than it already is.
+**1. Before switching on**
+- Stop Robo and keep its autostart off (see Setting up, step 4). Never use Robo's panel or
+  gestures on the hanging arm: they assume it stands on a table.
+- Check the base's cables have slack for nearly a full turn (±178°).
+- Nothing on or near the board except what you're testing. Keep hands clear while it moves.
 
-Then it asks before moving, and moves slowly (0.3 rad/s, at least 6 s).
+**2. Switch on and start the arm**
 
-**Try it in the simulation first:**
-
-```bash
-ros2 launch open_manipulator_x_bringup base.launch.py use_sim:=false use_fake_hardware:=true fake_sensor_commands:=true start_rviz:=true
-```
+Let the arm hang straight down, switch on the 12 V, then:
 
 ```bash
-cd ~/Documents/Auto-chess && python3 -m autochess.park
+ros2 launch open_manipulator_x_bringup hardware.launch.py port_name:=/dev/ttyACM0
 ```
 
-RViz shows the arm the right way up, so the park pose looks upside down there: the upper arm
-leans back, the forearm comes forward over the base, and the gripper points forward and down,
-ending about 10 cm in front of the base and 10 cm above the floor of the scene. On the real
-hanging arm that's mirrored: the gripper ends up about 10 cm below the plate.
+Leave that running. Use a second terminal for everything below, from `~/Documents/Auto-chess`.
 
-**Then on the real arm:**
+**3. Park it**
 
-1. Stop Robo and keep its autostart off. Don't use Robo's panel or gestures on the hanging arm.
-2. Clear the board under the arm, and check the hanging arm doesn't touch anything.
-3. Let the arm hang straight down, then switch on the 12 V.
-4. Start the arm: `ros2 launch open_manipulator_x_bringup hardware.launch.py port_name:=/dev/ttyACM0`
-5. In a second terminal: `python3 -m autochess.park`, keep a hand near the arm and the 12 V switch, and press Enter.
+```bash
+python3 -m autochess.park
+```
 
-Switching off: the arm goes limp and swings down. Hold it, or make sure nothing is under it.
+The park pose folds the arm up under the beam: about 19 cm above the board (the king is 8 cm),
+sticking out only about 12 cm, and at least 7 cm clear of the mount plate. (ROBOTIS's "home", all
+joints at 0, isn't used: hanging, it sticks the forearm out sideways about 30 cm.) Before moving it
+checks the arm's angles are sensible (a limp arm hangs just past the elbow limit, which is
+allowed), that the move stays clear of the plate, and that the arm never goes lower on the way.
+Then it asks, and moves slowly.
+
+**4. Calibrate the board (once, and again if the board or the frame moves)**
+
+Take the pieces off, leave the board where it will stay (mark or fix its position), and put the
+bin for captured pieces beside it. Then:
+
+```bash
+python3 -m autochess.calibrate --height 430
+```
+
+`--height` is roughly the distance from the board up to the base plate. You steer the closed
+fingertips with the keyboard (`w a s d` across, `r f` up and down, `1 2 3` for steps of 1, 5 or
+20 mm, Enter to confirm) to touch the centres of **a1** (White's left corner), **h1** (White's right
+corner) and **a8** (Black's corner on White's left), then 5–10 cm above the bin. Every other square
+follows from those three points. It then shows you h8 to check. The result is saved in
+`data/board.json` (not in git: it belongs to this robot).
+
+**5. Test single moves and tune the grip**
+
+Set up the pieces in the starting position, then for example:
+
+```bash
+python3 -m autochess.try_move e2e4
+python3 -m autochess.try_move g1f3 --grip n=30           # try the knight gripped 30 mm up
+python3 -m autochess.try_move g1f3 --grip n=30 --save    # keep that height
+```
+
+Each piece type is gripped at its own height above the board (pawn 22, rook 25, knight 28,
+bishop 32, queen 38, king 42 mm to start with). The gripper opens only part way (about 40 mm),
+so it doesn't knock the neighbouring pieces.
+
+**6. If something goes wrong**
+
+If the gripper closes on nothing (twice), or a square can't be reached, the arm puts back
+anything it's holding, parks, and the screen tells you what to do by hand ("Please move the
+knight from g1 to f3, and press Done"). The game then carries on. For a promotion, it takes the
+pawn away and asks you to put the new queen on the board.
+
+**7. Play**
+
+```bash
+python3 -m autochess
+```
+
+It asks before parking the arm, then opens the screen. Choose **Watch robot vs robot** for the arm
+to play itself, or **Play the robot**.
+
+**Switching off:** the arm goes limp and swings down. Park it first, then hold it while you
+switch off the 12 V.
 
 ## How the code is organised
 
@@ -163,9 +219,14 @@ Switching off: the arm goes limp and swings down. Hold it, or make sure nothing 
 | `autochess/__main__.py` | Starts it all: `python3 -m autochess` |
 | `autochess/check.py` | Checks every dependency: `python3 -m autochess.check` |
 | `setup/jetson_setup.sh` | Installs what Auto-chess adds on the Jetson |
-| `autochess/kinematics.py` | Geometry of the hanging arm: joint positions, the park pose, checks that the arm stays clear of the mount |
+| `autochess/kinematics.py` | Geometry of the hanging arm: forward and inverse kinematics, the park pose, checks that the arm stays clear of the mount and keeps its elbow above the gripper |
 | `autochess/ros_arm.py` | Talks to the ROBOTIS arm and gripper controllers through ROS 2 |
 | `autochess/park.py` | Folds the arm into the park pose: `python3 -m autochess.park` |
+| `autochess/motion.py` | Safe moves: joint moves that never dip over the board, straight lines up and down, parking |
+| `autochess/geometry.py` | Where every square is (from the calibration), grip heights for each piece |
+| `autochess/calibrate.py` | Keyboard calibration of the board: `python3 -m autochess.calibrate` |
+| `autochess/robot_arm.py` | Turns a chess move into arm steps (captures, castling, en passant, promotion) and asks for help if one fails |
+| `autochess/try_move.py` | Plays test moves with the real arm and tunes grip heights: `python3 -m autochess.try_move` |
 | `autochess/pretend.py` | A pretend arm and pretend eyes, so everything runs without the robot |
 | `tests/` | Tests (`python -m pytest -q`) |
 
@@ -173,7 +234,7 @@ Switching off: the arm goes limp and swings down. Hold it, or make sure nothing 
 
 1. ~~Chess core: Stockfish levels, clock, game loop.~~ Done.
 2. ~~Screen: start screen, game screen, saved results and a leaderboard.~~ Done.
-3. Arm: board positions for the hanging arm, pick and place, captures, castling, en passant, promotion. Simulation first.
+3. ~~Arm: park pose, calibration, pick and place, captures, castling, en passant, promotion.~~ Written; first real-arm test next.
 4. Camera: 4-corner board calibration, spotting the human's move by comparing the board before and after.
 5. Put it together on the Jetson, with a launch and a stop script.
 
@@ -181,4 +242,5 @@ Switching off: the arm goes limp and swings down. Hold it, or make sure nothing 
 
 - Only one program may use the arm at a time, and only one may use the camera.
 - With the 12 V off the arm slumps: hold it when powering on and when stopping. Hanging upside down, it falls *toward the board*, so keep hands and pieces clear.
-- Test new moves in the simulation (RViz) before running them on the real arm.
+- Every command that moves the arm asks first. Keep a hand near the 12 V switch the first few times.
+- The simulation (RViz with fake hardware, see Robo's handoff notes) can be used to watch new moves first, but it shows the arm the right way up.

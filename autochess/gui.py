@@ -191,15 +191,15 @@ class App:
 
         buttons = tk.Frame(side, bg=CREAM)
         buttons.pack(fill="x", pady=(10, 0))
+        self.helping = False        # the arm asked a person to finish its move
+        self.done_btn = tk.Button(buttons, text="Done", font=font(22, True), bg=GOLD, fg="white",
+                                  highlightbackground=GOLD, width=9, pady=10, state="disabled",
+                                  command=self._done)
+        self.done_btn.pack(side="left")
         if human_sides:
-            self.done_btn = tk.Button(buttons, text="Done", font=font(22, True), bg=GOLD, fg="white",
-                                      highlightbackground=GOLD, width=9, pady=10, state="disabled",
-                                      command=self._done)
-            self.done_btn.pack(side="left")
             tk.Button(buttons, text="Resign", font=font(15), width=8, pady=12,
                       command=lambda: g.resign(human_sides[0])).pack(side="right")
         else:
-            self.done_btn = None
             tk.Button(buttons, text="Stop game", font=font(15), width=10, pady=12,
                       command=g.stop).pack(side="right")
         self.root.bind("<Return>", lambda e: self._done())
@@ -310,7 +310,10 @@ class App:
         self._draw()
 
     def _done(self):
-        if self._human_to_move() and self.done_btn and str(self.done_btn["state"]) == "normal":
+        if str(self.done_btn["state"]) != "normal":
+            return
+        if self.helping or self._human_to_move():
+            self.helping = False
             self.done_btn.config(state="disabled")
             self.game.press_done()
 
@@ -341,6 +344,10 @@ class App:
             self._say(f"{g.players[data['side']].name} is thinking...")
         elif kind == "arm":
             self._say(f"{g.players[data['side']].name} plays {data['san']}. The arm is moving...")
+        elif kind == "help":
+            self.helping = True
+            self._say(data["text"], RED)
+            self.done_btn.config(state="normal")
         elif kind == "bad_move":
             self.pending = None
             self._draw()
@@ -366,8 +373,7 @@ class App:
         g = self.game
         if g.result != "*":
             results.save(g)
-        if self.done_btn:
-            self.done_btn.config(state="disabled")
+        self.done_btn.config(state="disabled")
         winner = g.winner_name()
         title = {"1-0": f"{winner} wins!", "0-1": f"{winner} wins!", "1/2-1/2": "Draw"}.get(g.result, "Game stopped")
         over = tk.Frame(self.frame, bg=MAROON, padx=40, pady=30)
