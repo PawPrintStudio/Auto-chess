@@ -76,8 +76,9 @@ class RealArm:
 
     def start(self):
         """Check the arm's angles are sensible, then park. Raises ValueError/Unsafe if not."""
-        plan(self.mover.refresh())
-        self.mover.park()
+        self.mover.refresh()
+        for q4, seconds in plan(self.mover.q):        # the same safe route as autochess.park
+            self.mover.joint_move(q4, seconds=seconds)
         self.ros.gripper(self.geo.gripper_open)
 
     def play(self, board, move):

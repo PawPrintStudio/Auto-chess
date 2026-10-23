@@ -156,7 +156,9 @@ sticking out only about 12 cm, and at least 7 cm clear of the mount plate. (ROBO
 joints at 0, isn't used: hanging, it sticks the forearm out sideways about 30 cm.) Before moving it
 checks the arm's angles are sensible (a limp arm hangs just past the elbow limit, which is
 allowed), that the move stays clear of the plate, and that the arm never goes lower on the way.
-Then it asks, and moves slowly.
+If moving all the joints together would dip lower (for example when the arm is bent with the
+gripper near the table), it moves one joint at a time in the safest order instead. It prints the
+moves, asks, and moves slowly.
 
 **4. Calibrate the board (once, and again if the board or the frame moves)**
 

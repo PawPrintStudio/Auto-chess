@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from autochess.kinematics import HANGING, PARK, clear_of_mount, joints_xyz, lowest, path_clear, within_limits
@@ -22,9 +23,21 @@ def test_park_is_folded_up_and_clear(fingers):
 
 
 def test_plan_from_hanging_straight_down():
-    target, seconds = plan((0.3, *HANGING))
-    assert target == (0.3, *PARK)                 # the base doesn't turn
+    [(target, seconds)] = plan((0.3, *HANGING))   # one move, all joints together
+    assert target == pytest.approx((0.3, *PARK))  # the base doesn't turn
     assert 6 <= seconds <= 10
+
+
+def test_plan_from_a_bent_arm_goes_one_joint_at_a_time():
+    # Seen on the real arm: moving all joints together from here would dip ~4 cm lower.
+    now = (1.40, -0.22, -1.27, -1.10)
+    moves = plan(now)
+    assert len(moves) == 3
+    assert moves[-1][0] == pytest.approx((1.40, *PARK))
+    start, path = lowest(now[1:]), [np.array(now[1:])] + [np.array(q[1:]) for q, _ in moves]
+    for a, b in zip(path, path[1:]):
+        assert sum(abs(b - a) > 1e-9) == 1           # one joint per move
+        assert all(lowest(a + (b - a) * f) <= start + 10 for f in np.linspace(0, 1, 30))
 
 
 def test_plan_refuses_a_slumped_arm():
