@@ -163,3 +163,17 @@ def test_game_does_not_start_if_the_arm_cannot_get_home():
              RealArm(ros, my_board(), log=lambda s: None))
     g.run()
     assert g.result == "*" and "home pose" in g.reason and g.board.move_stack == []
+
+
+def test_crossing_behind_the_arm_swings_round_and_stays_level():
+    from autochess.kinematics import joints_xyz
+    from autochess.motion import Mover, Unsafe
+    ros = FakeRos()
+    ros.q = ik((-230.0, -8.0, 320.0))          # just short of the line straight behind the arm
+    m = Mover(ros)
+    m.refresh()
+    with pytest.raises(Unsafe):
+        m.line_to((-230.0, 5.0, 320.0))         # a small step can't cross it...
+    m.go_to((-230.0, 5.0, 320.0), floor=330.0)   # ...so it swings round the long way
+    assert m.q[0] > 3.0 and m.where() == pytest.approx((-230.0, 5.0, 320.0), abs=0.5)
+    assert max(p[1] for p in joints_xyz(m.q[1:])) <= 330.0

@@ -35,7 +35,9 @@ arm coordinates, safety rules) is written down in [docs/robo_handoff.md](docs/ro
 
 Why upside down: standing on the table, the arm can't reach the far rows of this board. Hanging
 430 mm above the board centre, it reaches every square (gripper tilted up to 30°). The base turns
-up to ±178° (more than Robo's ±160°), so leave enough slack in its cables for that.
+through its full range (±179°, more than Robo's ±160°), so leave enough slack in its cables for a
+full turn. Directly behind the arm the two ends of that range meet: moves that cross there swing
+the base round the long way, slowly and at a safe height.
 
 ## Setting up
 
@@ -132,7 +134,7 @@ Do these in order the first time. Afterwards, only steps 1–3 and 7 are needed.
 **1. Before switching on**
 - Stop Robo and keep its autostart off (see Setting up, step 4). Never use Robo's panel or
   gestures on the hanging arm: they assume it stands on a table.
-- Check the base's cables have slack for nearly a full turn (±178°).
+- Check the base's cables have slack for a full turn (±179°).
 - Nothing on or near the board except what you're testing. Keep hands clear while it moves.
 
 **2. Switch on and start the arm**
@@ -172,7 +174,9 @@ python3 -m autochess.calibrate --height 430
 `--height` is roughly the distance from the board up to the base plate. You steer the closed
 fingertips with the keyboard (`w a s d` across, `r f` up and down, `1 2 3` for steps of 1, 5 or
 20 mm, Enter to confirm) to touch the centres of **a1** (White's left corner), **h1** (White's right
-corner) and **a8** (Black's corner on White's left), then 5–10 cm above the bin. Every other square
+corner) and **a8** (Black's corner on White's left), then 5–10 cm above the bin.
+Directly behind the arm is where the base reaches the end of its range; if a key press would
+cross that line, the arm swings round the other way by itself (slowly, never lower than it is). Every other square
 follows from those three points. It then shows you h8 to check. The result is saved in
 `data/board.json` (not in git: it belongs to this robot).
 

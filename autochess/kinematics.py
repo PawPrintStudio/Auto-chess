@@ -15,9 +15,11 @@ FINGERS = 150.0                       # wrist -> fingertips; the measured arm (4
 GRIPPER_HALF_WIDTH = 35.0             # the gripper body sticks out this far each side of the wrist-fingertip line
 
 JOINTS = ["joint1", "joint2", "joint3", "joint4"]
-# The base may turn nearly all the way round (ROBOTIS allows +-pi; Robo used +-2.8): with the arm
-# above the board centre, +-2.8 leaves a blind spot behind it. Its cables need slack for +-178 deg.
-LIMITS = [(-3.1, 3.1), (-1.5, 1.5), (-1.5, 1.4), (-1.7, 1.9)]
+# The base uses its full range (ROBOTIS's limit is +-pi; Robo used +-2.8): with the arm above the
+# board centre, anything less leaves a blind spot behind it. Directly behind the arm the two ends of
+# the range meet, so going from one side of that line to the other means swinging round the long
+# way (the arm does that by itself, at a safe height). Its cables need slack for a full turn.
+LIMITS = [(-3.13, 3.13), (-1.5, 1.5), (-1.5, 1.4), (-1.7, 1.9)]
 
 # Folded up under the beam, clear of the plate and of the pieces. Lowest point ~236 mm below the
 # plate (~195 mm above the board at a 430 mm mount, well over the 80 mm king); sticks out ~115 mm

@@ -57,8 +57,15 @@ def jog(mover, prompt, deepest):
                 continue
             try:
                 mover.line_to(target)
-            except Unsafe as e:
-                print(f"\n    can't go there: {e}")
+            except Unsafe:
+                # Usually the spot behind the arm, where the base reaches the end of its range:
+                # swing round the other way, never lower than now (up through the park pose if needed).
+                try:
+                    print("\n    swinging round...", end="", flush=True)
+                    mover.go_to(target, floor=max(p[2], target[2]) + 10)
+                    print(" done")
+                except Unsafe as e:
+                    print(f"\n    can't go there: {e}")
 
 
 def main():
