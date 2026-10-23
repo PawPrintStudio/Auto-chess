@@ -14,3 +14,6 @@ log/
 
 # Saved games and per-robot calibration
 data/
+
+# Editor and tool settings
+.serena/

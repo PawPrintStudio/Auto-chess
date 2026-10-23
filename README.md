@@ -113,6 +113,44 @@ python3 -m autochess --pretend --fullscreen  # fill the screen; Esc leaves full 
 - Finished games are saved in `data/results.jsonl` (not in git). The start screen shows a
   leaderboard of wins against the robot for each difficulty.
 
+## The park pose (hanging arm)
+
+The arm hangs upside down, so ROBOTIS's "home" (all joints at 0) isn't a good resting pose: it
+sticks the forearm and gripper out sideways about 30 cm. Auto-chess uses a **park pose** instead:
+folded up under the beam, about 19 cm above the board (the king is 8 cm), sticking out only about
+12 cm, and at least 7 cm clear of the mount plate. Before moving, `autochess.park` checks that:
+
+- the arm reports angles inside its limits (a limp arm hangs just past the elbow limit, which is allowed),
+- the whole move stays clear of the plate and the base servo,
+- the arm never goes lower on the way than it already is.
+
+Then it asks before moving, and moves slowly (0.3 rad/s, at least 6 s).
+
+**Try it in the simulation first:**
+
+```bash
+ros2 launch open_manipulator_x_bringup base.launch.py use_sim:=false use_fake_hardware:=true fake_sensor_commands:=true start_rviz:=true
+```
+
+```bash
+cd ~/Documents/Auto-chess && python3 -m autochess.park
+```
+
+RViz shows the arm the right way up, so the park pose looks upside down there: the upper arm
+leans back, the forearm comes forward over the base, and the gripper points forward and down,
+ending about 10 cm in front of the base and 10 cm above the floor of the scene. On the real
+hanging arm that's mirrored: the gripper ends up about 10 cm below the plate.
+
+**Then on the real arm:**
+
+1. Stop Robo and keep its autostart off. Don't use Robo's panel or gestures on the hanging arm.
+2. Clear the board under the arm, and check the hanging arm doesn't touch anything.
+3. Let the arm hang straight down, then switch on the 12 V.
+4. Start the arm: `ros2 launch open_manipulator_x_bringup hardware.launch.py port_name:=/dev/ttyACM0`
+5. In a second terminal: `python3 -m autochess.park`, keep a hand near the arm and the 12 V switch, and press Enter.
+
+Switching off: the arm goes limp and swings down. Hold it, or make sure nothing is under it.
+
 ## How the code is organised
 
 | File | What it does |
@@ -125,6 +163,9 @@ python3 -m autochess --pretend --fullscreen  # fill the screen; Esc leaves full 
 | `autochess/__main__.py` | Starts it all: `python3 -m autochess` |
 | `autochess/check.py` | Checks every dependency: `python3 -m autochess.check` |
 | `setup/jetson_setup.sh` | Installs what Auto-chess adds on the Jetson |
+| `autochess/kinematics.py` | Geometry of the hanging arm: joint positions, the park pose, checks that the arm stays clear of the mount |
+| `autochess/ros_arm.py` | Talks to the ROBOTIS arm and gripper controllers through ROS 2 |
+| `autochess/park.py` | Folds the arm into the park pose: `python3 -m autochess.park` |
 | `autochess/pretend.py` | A pretend arm and pretend eyes, so everything runs without the robot |
 | `tests/` | Tests (`python -m pytest -q`) |
 
