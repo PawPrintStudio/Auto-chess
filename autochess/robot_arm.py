@@ -10,7 +10,7 @@ import numpy as np
 from .geometry import EMPTY_GRIP, GRIP_EFFORT, GRIPPER_CLOSED
 from .kinematics import ik
 from .motion import Mover, Unsafe
-from .park import plan
+from .park import follow, plan
 
 NAMES = {chess.PAWN: "pawn", chess.KNIGHT: "knight", chess.BISHOP: "bishop", chess.ROOK: "rook",
          chess.QUEEN: "queen", chess.KING: "king"}
@@ -78,8 +78,11 @@ class RealArm:
         """Go to the home (park) pose from wherever the arm is now, by the same safe route as
         autochess.park, and open the gripper. Raises ValueError/Unsafe if it can't do so safely."""
         self.mover.refresh()                           # the arm may have been moved by hand
-        for q4, seconds in plan(self.mover.q):
-            self.mover.joint_move(q4, seconds=seconds)
+        moves = plan(self.mover.q)
+        if not follow(self.ros, moves):
+            raise Unsafe("the arm didn't finish going to its home pose")
+        if moves:
+            self.mover.q = tuple(moves[-1][0])
         self.ros.gripper(self.geo.gripper_open)
         self.holding = False
 

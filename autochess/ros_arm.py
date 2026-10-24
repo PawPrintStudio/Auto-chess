@@ -34,7 +34,8 @@ class RosArm:
         self._grip = ActionClient(self.node, GripperCommand, "/gripper_controller/gripper_cmd")
         self._exec = MultiThreadedExecutor()
         self._exec.add_node(self.node)
-        threading.Thread(target=self._exec.spin, daemon=True).start()
+        self._spin = threading.Thread(target=self._exec.spin, daemon=True)
+        self._spin.start()
 
     def _on_joints(self, msg):
         pos = dict(zip(msg.name, msg.position))
@@ -98,7 +99,10 @@ class RosArm:
         return done.result()
 
     def close(self):
-        self._exec.shutdown()
+        # Stop spinning and wait for it before destroying the node, or rclpy warns
+        # "cannot use Destroyable because destruction was requested".
+        self._exec.shutdown(timeout_sec=2.0)
+        self._spin.join(timeout=2.0)
         self.node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

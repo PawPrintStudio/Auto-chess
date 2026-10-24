@@ -159,8 +159,9 @@ joints at 0, isn't used: hanging, it sticks the forearm out sideways about 30 cm
 checks the arm's angles are sensible (a limp arm hangs just past the elbow limit, which is
 allowed), that the move stays clear of the plate, and that the arm never goes lower on the way.
 If moving all the joints together would dip lower (for example when the arm is bent with the
-gripper near the table), it moves one joint at a time in the safest order instead. It prints the
-moves, asks, and moves slowly.
+gripper near the table), it moves one joint at a time in the safest order instead. If even that
+isn't safe (the arm stretched far out, say), it searches for a chain of small one-joint moves
+that is (this takes a few seconds). It prints the moves, asks, and moves slowly.
 
 **4. Calibrate the board (once, and again if the board or the frame moves)**
 
@@ -177,7 +178,8 @@ fingertips with the keyboard (`w a s d` across, `r f` up and down, `1 2 3` for s
 corner) and **a8** (Black's corner on White's left), then 5–10 cm above the bin.
 Directly behind the arm is where the base reaches the end of its range; if a key press would
 cross that line, the arm swings round the other way by itself (slowly, never lower than it is). Every other square
-follows from those three points. It then shows you h8 to check. The result is saved in
+follows from those three points. It then shows you h8 to check. However it ends (finished,
+`q`, or an error), the arm goes back to its home pose by itself. The result is saved in
 `data/board.json` (not in git: it belongs to this robot).
 
 **5. Test single moves and tune the grip**

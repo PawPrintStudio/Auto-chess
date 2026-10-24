@@ -17,7 +17,7 @@ import numpy as np
 
 from .geometry import GRIPPER_CLOSED, Board
 from .motion import Mover, Unsafe
-from .park import plan
+from .park import follow, plan
 
 STEPS = {"1": 1.0, "2": 5.0, "3": 20.0}
 MOVES = {"w": (1, 0, 0), "s": (-1, 0, 0), "a": (0, 1, 0), "d": (0, -1, 0), "r": (0, 0, -1), "f": (0, 0, 1)}
@@ -78,16 +78,20 @@ def main():
     from .ros_arm import RosArm
     arm = RosArm()
     mover = Mover(arm, joint_speed=0.4, line_speed=40.0)
+    started = False
     try:
         q = mover.refresh()
         try:
-            plan(q)
+            moves = plan(q)
         except ValueError as e:
             sys.exit(f"Not moving: {e}")
         print(__doc__)
         input("Clear the pieces off the board (leave the board in place). Keep a hand near the 12 V switch.\n"
               "Press Enter to park the arm and start... ")
-        mover.park()
+        started = True
+        if not follow(arm, moves):                # the same safe route as autochess.park
+            sys.exit("The arm didn't finish going to its home pose.")
+        mover.refresh()
         arm.gripper(GRIPPER_CLOSED)          # closed fingers make a pointer
         start = np.array([120.0, 0.0, H - 150.0])
         mover.go_to(start, floor=H - 100)
@@ -119,12 +123,23 @@ def main():
         b.drop = p
         b.save()
         print("Saved data/board.json.")
-        mover.line_to(p - [0, 0, 40])
-        mover.park()
     except Unsafe as e:
         print(f"\nStopped: {e}")
     finally:
+        if started:
+            go_home(arm)
         arm.close()
+
+
+def go_home(arm):
+    """However the calibration ends (finished, q, or an error), fold the arm back into its park pose."""
+    print("Going back to the home pose...")
+    try:
+        q = arm.angles()
+        if q is None or not follow(arm, plan(q)):
+            print("Couldn't go home: run python3 -m autochess.park")
+    except ValueError as e:
+        print(f"Couldn't go home: {e}")
 
 
 if __name__ == "__main__":
