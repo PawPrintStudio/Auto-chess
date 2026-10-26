@@ -7,7 +7,7 @@ the rest of the move by hand, then carries on with the game.
 import chess
 import numpy as np
 
-from .geometry import EMPTY_GRIP, GRIP_EFFORT, GRIPPER_CLOSED, HELD_MARGIN
+from .geometry import EMPTY_GRIP, GRIP_EFFORT, GRIPPER_CLOSED
 from .kinematics import ik
 from .motion import Mover, Unsafe
 from .park import follow, plan
@@ -86,7 +86,7 @@ class RealArm:
             self.mover.q = tuple(moves[-1][0])
         # Close once on nothing to learn where empty fingers end up: closing on a piece stops short of that.
         empty = self.ros.gripper(GRIPPER_CLOSED, GRIP_EFFORT)
-        self.empty_limit = (empty + HELD_MARGIN) if empty is not None else EMPTY_GRIP
+        self.empty_limit = (empty + self.geo.held_margin) if empty is not None else EMPTY_GRIP
         self.log(f"[arm] empty gripper closes to {empty if empty is not None else float('nan'):+.4f};"
                  f" holding a piece = stops above {self.empty_limit:+.4f}")
         self.ros.gripper(self.geo.gripper_open)

@@ -24,15 +24,17 @@ GRIPPER_CLOSED = -0.01
 GRIP_EFFORT = 60.0
 EMPTY_GRIP = -0.008     # fingers closed past this: nothing between them (until start() measures it)
 HELD_MARGIN = 0.001     # fingers stopping 1 mm short of an empty close: they're holding a piece
+                        # (try_move --held-margin; smaller for pieces barely wider than the closed gripper)
 
 
 class Board:
-    def __init__(self, a1, h1, a8, drop, grip=None, travel=TRAVEL, gripper_open=GRIPPER_OPEN):
+    def __init__(self, a1, h1, a8, drop, grip=None, travel=TRAVEL, gripper_open=GRIPPER_OPEN,
+                 held_margin=HELD_MARGIN):
         self.a1, self.h1, self.a8 = (np.array(p, float) for p in (a1, h1, a8))
         self.drop = np.array(drop, float)
         self.grip = dict(GRIP)
         self.grip.update({chess.PIECE_SYMBOLS.index(k): float(v) for k, v in (grip or {}).items()})
-        self.travel, self.gripper_open = travel, gripper_open
+        self.travel, self.gripper_open, self.held_margin = travel, gripper_open, held_margin
 
     def square(self, sq, height=0.0):
         """Fingertip position over the centre of square sq, height mm above the board."""
@@ -53,6 +55,7 @@ class Board:
         path.parent.mkdir(parents=True, exist_ok=True)
         data = {"a1": self.a1.tolist(), "h1": self.h1.tolist(), "a8": self.a8.tolist(),
                 "drop": self.drop.tolist(), "travel": self.travel, "gripper_open": self.gripper_open,
+                "held_margin": self.held_margin,
                 "grip": {chess.PIECE_SYMBOLS[p]: h for p, h in self.grip.items()}}
         path.write_text(json.dumps(data, indent=2))
 
@@ -63,4 +66,4 @@ class Board:
             raise FileNotFoundError("the board isn't calibrated yet: python3 -m autochess.calibrate")
         d = json.loads(path.read_text())
         return cls(d["a1"], d["h1"], d["a8"], d["drop"], d.get("grip"), d.get("travel", TRAVEL),
-                   d.get("gripper_open", GRIPPER_OPEN))
+                   d.get("gripper_open", GRIPPER_OPEN), d.get("held_margin", HELD_MARGIN))
