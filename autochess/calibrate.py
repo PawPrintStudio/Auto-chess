@@ -1,7 +1,7 @@
 """Teach the arm where the board is:  python3 -m autochess.calibrate [--height 430]
 
-You steer the fingertips to the centres of a1, h1 and a8 (just touching the board), then to the spot
-where captured pieces are dropped. The result is saved in data/board.json.
+You steer the fingertips to the centres of a1, h1, a8 and h8 (just touching the board, gripper
+straight down), then to the spot where captured pieces are dropped. The result is saved in data/board.json.
 
 Joint keys (the default): each press turns one motor a little.
   a / z   base        +/-        1 2 3   step 1, 3 or 10 degrees
@@ -56,10 +56,12 @@ def yes_no(question):
         print("Please type y or n, then Enter.")
 
 
-def jog(mover, prompt, deepest, board_depth):
+def jog(mover, prompt, deepest, board_depth, straight=False):
     """Let the user steer the arm; returns the fingertip point when they press Enter (None on q).
-    Nothing goes deeper than `deepest` (mm below the plate)."""
+    Nothing goes deeper than `deepest` (mm below the plate). With straight=True, Enter with the
+    gripper tilted more than MAX_TILT asks for it to be straightened first (Enter again overrides)."""
     joint_mode, step, jstep = True, 5.0, 3.0
+    warned = False
     print(f"\n>>> {prompt}")
     while True:
         p, q = mover.where(), mover.q
@@ -74,8 +76,15 @@ def jog(mover, prompt, deepest, board_depth):
         termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)    # keys pressed while it was moving
         k = read_key().lower()
         if k in ("\n", "\r"):
+            if straight and tilt > MAX_TILT and not warned:
+                key = "v" if sum(q[1:]) + np.pi / 2 > 0 else "f"      # the wrist key that turns it back to straight
+                print(f"\n    The gripper is tilted {tilt:.0f} deg: press {key} (wrist) to straighten it, touch the square"
+                      f" again, then Enter. (Enter again to use it as it is.)")
+                warned = True
+                continue
             print()
             return p
+        warned = False
         if k == "q":
             print()
             return None
@@ -114,7 +123,8 @@ def jog(mover, prompt, deepest, board_depth):
 
 
 CORNERS = (("a1", "White's left corner square"), ("h1", "White's right corner square"),
-           ("a8", "Black's corner square on White's left side"))
+           ("a8", "Black's corner square on White's left side"), ("h8", "Black's corner square on White's right side"))
+MAX_TILT = 5.0            # degrees: touch the squares with the gripper about straight down
 CARRY_WANTED = 145.0      # a piece held 42 mm up then clears the 80 mm king by 20 mm
 
 
@@ -164,12 +174,13 @@ def main():
         else:
             corners = {}
             for name, where in CORNERS:
-                p = jog(mover, f"Touch the centre of {name} ({where}) with the fingertips, then Enter.", H + 20, H)
+                p = jog(mover, f"Touch the centre of {name} ({where}) with the fingertips, then Enter.", H + 20, H,
+                        straight=True)
                 if p is None:
                     return
                 corners[name] = p
                 mover.line_to(p - [0, 0, 60])
-            b = Board(corners["a1"], corners["h1"], corners["a8"], drop=corners["a1"])
+            b = Board(corners["a1"], corners["h1"], corners["a8"], drop=corners["a1"], h8=corners["h8"])
             keep_grip_settings(b)
             check_board(mover, b)
         p = jog(mover, "Move the fingertips 5-10 cm above the bin for captured pieces (where it lets go), then Enter.\n"
@@ -200,7 +211,7 @@ def keep_grip_settings(b):
 
 
 def check_board(mover, b):
-    """After the three corners: report the squares, pick the carrying height, and check h8."""
+    """After the four corners: report the squares, pick the carrying height, and check a middle square."""
     fs, rs = b.square_size()
     print(f"\nSquares: {fs:.1f} mm along the ranks, {rs:.1f} mm along the files.")
     b.travel = carry_height(b)
@@ -209,12 +220,11 @@ def check_board(mover, b):
         print(f"  That's below {CARRY_WANTED:.0f} mm: a carried king or queen only just clears the king. "
               f"Raising the arm on the frame by about {(CARRY_WANTED - b.travel) * 1.6:.0f} mm would fix it.")
 
-    h8 = b.square(chess.H8, 15)
-    mover.go_to(b.square(chess.H8, 60), floor=b.floor(40))
-    mover.line_to(h8)
-    if not yes_no("Check: are the fingertips 15 mm above the centre of h8? [y/n] "):
-        raise Unsafe("the h8 check failed: run the calibration again, touching the square centres carefully")
-    mover.line_to(b.square(chess.H8, 60))
+    mover.go_to(b.square(chess.E5, 60), floor=b.floor(40))
+    mover.line_to(b.square(chess.E5, 15))
+    if not yes_no("Check: are the fingertips 15 mm above the centre of e5? [y/n] "):
+        raise Unsafe("the e5 check failed: run the calibration again, with the gripper straight down at each corner")
+    mover.line_to(b.square(chess.E5, 60))
 
 
 def go_home(arm):
