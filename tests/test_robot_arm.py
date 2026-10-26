@@ -191,3 +191,22 @@ def test_calibration_saves_and_loads(tmp_path):
     assert c.square(chess.E4, 10) == pytest.approx(b.square(chess.E4, 10))
     assert c.drop == pytest.approx(b.drop) and c.travel == 125.0
     assert c.grip[chess.PAWN] == 24.0 and c.grip[chess.KING] == b.grip[chess.KING]
+
+
+@pytest.mark.parametrize("drop", [(-284.26, 3.61, 328.95), (-215.0, -39.0, 330.0)])   # the real bin; a closer one
+def test_tilted_low_board_like_the_real_one(drop):
+    # The real calibration: the board ~39-40 cm below the plate, the a8 side 15 mm lower, 42 mm squares,
+    # and the grip settings tuned on the real pieces.
+    b = Board([145.95, -170.75, 391.12], [-148.63, -186.99, 388.08], [131.64, 125.02, 405.43], drop,
+              travel=125.0, grip={"p": 8, "r": 11, "n": 14, "b": 18, "q": 24, "k": 28})
+    assert b.height_above(b.square(chess.E7, 30)) == pytest.approx(30)
+    assert b.over_board(b.square(chess.H8)) and not b.over_board(b.drop)
+    arm = RealArm(FakeRos(), b, log=lambda s: None)
+    arm.ask = pytest.fail                         # nothing here should need a person
+    arm.start()
+    board = chess.Board()
+    # The test opening (both bishops, both knights, castling, the queen), then three captures.
+    for uci in "e2e4 e7e5 g1f3 b8c6 f1c4 f8c5 e1g1 g8f6 d1e2 f6e4 e2e4 d7d5 c4d5 d8d5".split():
+        m = chess.Move.from_uci(uci)
+        arm.play(board, m)
+        board.push(m)

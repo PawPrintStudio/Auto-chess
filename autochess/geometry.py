@@ -13,6 +13,8 @@ import numpy as np
 
 BOARD_FILE = Path(__file__).resolve().parent.parent / "data" / "board.json"
 
+TALLEST = 80.0          # the king, mm: nothing may come lower than this over the board, plus a margin
+CLEARANCE = 15.0        # that margin
 TRAVEL = 145.0          # fingertip height above the board while moving between squares
                         # (a piece held 42 mm up still clears the 80 mm king by 20 mm)
 # Fingertip height above the board when gripping each piece (the fingers close above this).
@@ -41,6 +43,24 @@ class Board:
         f, r = chess.square_file(sq), chess.square_rank(sq)
         p = self.a1 + (self.h1 - self.a1) * f / 7 + (self.a8 - self.a1) * r / 7
         return p - [0.0, 0.0, height]
+
+    def _uv(self, point):
+        """Board coordinates of a point: (file, rank) in squares, 0 = centre of a1, 7 = centre of h/8."""
+        files, ranks = (self.h1 - self.a1) / 7, (self.a8 - self.a1) / 7
+        return np.linalg.solve(np.array([files[:2], ranks[:2]]).T, np.asarray(point, float)[:2] - self.a1[:2])
+
+    def height_above(self, point):
+        """How far point (X, Y, Z) is above the board surface right under it (the calibrated plane,
+        extended past the edges), mm. Follows a board that isn't level."""
+        files, ranks = (self.h1 - self.a1) / 7, (self.a8 - self.a1) / 7
+        u, v = self._uv(point)
+        return float(self.a1[2] + u * files[2] + v * ranks[2] - point[2])
+
+    def over_board(self, point, margin=25.0):
+        """True if point is above the squares, or within `margin` mm of their edge."""
+        u, v = self._uv(point)
+        m = margin / min(self.square_size())
+        return -0.5 - m <= u <= 7.5 + m and -0.5 - m <= v <= 7.5 + m
 
     def floor(self, height):
         """Depth below the plate that keeps everything at least `height` above the whole board."""

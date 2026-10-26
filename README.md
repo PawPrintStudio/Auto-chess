@@ -31,7 +31,7 @@ arm coordinates, safety rules) is written down in [docs/robo_handoff.md](docs/ro
 | Computer | NVIDIA Jetson Orin NX 16GB, Ubuntu 22.04, JetPack 6, Python 3.10 |
 | Camera | Logitech BRIO, to look down at the board (not used yet) |
 | Board | wooden board, 305 × 305 mm, squares about 38–40 mm; tallest piece (king) 80 mm |
-| Bin | a small box beside the board, within about 20 cm of the point under the base, for captured pieces |
+| Bin | a small box right next to the middle of one side of the board, about 20–22 cm from the point under the base, for captured pieces (further out, the arm lets go above it and the piece drops in) |
 
 Why upside down: standing on the table, the arm can't reach the far rows of this board. Hanging
 430 mm above the board centre, it reaches every square (gripper tilted up to 30°). The base turns
@@ -166,7 +166,9 @@ that is (this takes a few seconds). It prints the moves, asks, and moves slowly.
 **4. Calibrate the board (once, and again if the board or the frame moves)**
 
 Take the pieces off, leave the board where it will stay (mark or fix its position), and put the
-bin for captured pieces beside it. Then:
+bin for captured pieces right next to the middle of one side, about 20–22 cm from the point under
+the arm. A new calibration keeps the grip settings you tuned with `try_move`. To move only the bin
+later: `python3 -m autochess.calibrate --bin-only`. Then:
 
 ```bash
 python3 -m autochess.calibrate --height 430
@@ -210,6 +212,10 @@ that are holding a piece. Each close prints the finger position, e.g.
 `[arm] gripper closed to -0.0052 on the pawn (holding it)`.
 
 **6. If something goes wrong**
+
+While carrying, the arm keeps its elbow and wrist above the tallest piece (the 80 mm king) plus
+15 mm, and the fingertips that much higher again as the held piece hangs below them. It measures
+this from the board surface right under it, so a board that isn't quite level is fine.
 
 If the gripper closes on nothing (twice), or a square can't be reached, the arm puts back
 anything it's holding, parks, and the screen tells you what to do by hand ("Please move the

@@ -33,7 +33,8 @@ class Mover:
         return fingertip(self.q)
 
     def joint_move(self, q4, floor=None, seconds=None):
-        """Move to q4 with all joints turning together. floor: the arm mustn't go deeper than this."""
+        """Move to q4 with all joints turning together. floor: the arm mustn't go deeper than this
+        (a depth below the plate), or a function of the joint angles that says whether a pose is high enough."""
         start = np.array(self.q if self.q is not None else self.refresh())
         end = np.array(q4, float)
         if not within_limits(end):
@@ -42,7 +43,8 @@ class Mover:
             q = start + (end - start) * f
             if not clear_of_mount(q[1:]):
                 raise Unsafe("the move passes too close to the mount plate")
-            if floor is not None and max(p[1] for p in joints_xyz(q[1:])) > floor:
+            low = (not floor(q)) if callable(floor) else (floor is not None and max(p[1] for p in joints_xyz(q[1:])) > floor)
+            if low:
                 raise Unsafe("the move would dip too low over the board")
         t = seconds or max(1.0, float(np.max(np.abs(end - start))) / self.joint_speed)
         if not self.arm.move(tuple(end), t):

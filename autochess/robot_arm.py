@@ -7,8 +7,8 @@ the rest of the move by hand, then carries on with the game.
 import chess
 import numpy as np
 
-from .geometry import EMPTY_GRIP, GRIP_EFFORT, GRIPPER_CLOSED
-from .kinematics import ik
+from .geometry import CLEARANCE, EMPTY_GRIP, GRIP_EFFORT, GRIPPER_CLOSED, TALLEST
+from .kinematics import ik, joint_points
 from .motion import Mover, Unsafe
 from .park import follow, plan
 
@@ -123,7 +123,19 @@ class RealArm:
         return self.geo.square(sq, self.geo.travel)
 
     def _floor(self):
-        return self.geo.floor(self.geo.travel - 10)
+        """Over the board, nothing may hit the pieces standing on it (up to the 80 mm king): the elbow
+        and wrist stay above the king plus a margin, and the fingertips also above whatever hangs
+        below them (the held piece's grip height). The board needn't be level."""
+        body = TALLEST + CLEARANCE
+        tip = body + (self.geo.grip[self.held[1]] if self.holding and self.held else 0.0)
+
+        def clear(point, least):         # only over the board (and just past its edge) are there pieces
+            return not self.geo.over_board(point) or self.geo.height_above(point) >= least
+
+        def high_enough(q4):
+            elbow, wrist, fingers = joint_points(q4)
+            return clear(elbow, body) and clear(wrist, body) and clear(fingers, tip)
+        return high_enough
 
     def _take(self, sq, piece):
         self.mover.go_to(self._above(sq), floor=self._floor())
@@ -161,10 +173,16 @@ class RealArm:
         if q_up is None:
             raise Unsafe("can't reach the bin")
         self.mover.go_to_q(q_up, floor=self._floor())
-        self.mover.joint_move(q_drop, floor=drop[2] + 5)
+        try:
+            self.mover.joint_move(q_drop, floor=drop[2] + 5)
+            lowered = True
+        except Unsafe:
+            lowered = False          # can't get down to it safely from here: let go above it, it falls in
+            self.log("[arm] letting go above the bin instead")
         self.ros.gripper(self.geo.gripper_open)
         self.holding = False
-        self.mover.joint_move(q_up)
+        if lowered:
+            self.mover.joint_move(q_up)
 
     def _park_and_ask(self, steps, color, failed=False, note=""):
         try:

@@ -100,6 +100,12 @@ _UPPER_LEN = float(np.hypot(*UPPER))
 _UPPER_ANGLE = float(np.arctan2(-UPPER[1], UPPER[0]))   # the upper arm's direction at q2 = 0
 
 
+def joint_points(q4, fingers=FINGERS):
+    """(X, Y, Z) of the elbow, the wrist and the fingertips for (base, shoulder, elbow, wrist)."""
+    c, s = np.cos(q4[0]), np.sin(q4[0])
+    return [np.array([p[0] * c, p[0] * s, p[1]]) for p in joints_xyz(q4[1:], fingers)[1:]]
+
+
 def fingertip(q4, fingers=FINGERS):
     """(X, Y, Z) of the fingertips for (base, shoulder, elbow, wrist)."""
     *_, t = joints_xyz(q4[1:], fingers)

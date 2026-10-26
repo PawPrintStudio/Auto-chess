@@ -113,6 +113,8 @@ def jog(mover, prompt, deepest, board_depth):
                     print(f"\n    can't go there: {e}")
 
 
+CORNERS = (("a1", "White's left corner square"), ("h1", "White's right corner square"),
+           ("a8", "Black's corner square on White's left side"))
 CARRY_WANTED = 145.0      # a piece held 42 mm up then clears the 80 mm king by 20 mm
 
 
@@ -128,6 +130,8 @@ def carry_height(board, best=CARRY_WANTED, lowest_ok=90.0):
 
 def main():
     ap = argparse.ArgumentParser(description="Calibrate the board position")
+    ap.add_argument("--bin-only", action="store_true",
+                    help="keep the saved board corners and only set the bin for captured pieces again")
     ap.add_argument("--height", type=float, default=430.0,
                     help="roughly how far the board is below the arm's base plate, mm (default 430)")
     args = ap.parse_args()
@@ -154,32 +158,22 @@ def main():
         start = np.array([120.0, 0.0, H - 150.0])
         mover.go_to(start, floor=H - 100)
 
-        corners = {}
-        for name, where in (("a1", "White's left corner square"), ("h1", "White's right corner square"),
-                            ("a8", "Black's corner square on White's left side")):
-            p = jog(mover, f"Touch the centre of {name} ({where}) with the fingertips, then Enter.", H + 20, H)
-            if p is None:
-                return
-            corners[name] = p
-            mover.line_to(p - [0, 0, 60])
-        b = Board(corners["a1"], corners["h1"], corners["a8"], drop=corners["a1"])
-        fs, rs = b.square_size()
-        print(f"\nSquares: {fs:.1f} mm along the ranks, {rs:.1f} mm along the files.")
-        b.travel = carry_height(b)
-        print(f"Carrying height: {b.travel:.0f} mm above the board (the highest that reaches every square).")
-        if b.travel < CARRY_WANTED:
-            print(f"  That's below {CARRY_WANTED:.0f} mm: a carried king or queen only just clears the king. "
-                  f"Raising the arm on the frame by about {(CARRY_WANTED - b.travel) * 1.6:.0f} mm would fix it.")
-
-        h8 = b.square(chess.H8, 15)
-        mover.go_to(b.square(chess.H8, 60), floor=b.floor(40))
-        mover.line_to(h8)
-        if not yes_no("Check: are the fingertips 15 mm above the centre of h8? [y/n] "):
-            print("Then something's off. Run the calibration again, touching the square centres carefully.")
-            return
-        mover.line_to(b.square(chess.H8, 60))
-
-        p = jog(mover, "Move the fingertips 5-10 cm above the bin for captured pieces (where it lets go), then Enter.",
+        if args.bin_only:
+            b = Board.load()
+            mover.go_to(b.square(chess.E4, b.travel), floor=b.floor(b.travel - 10))
+        else:
+            corners = {}
+            for name, where in CORNERS:
+                p = jog(mover, f"Touch the centre of {name} ({where}) with the fingertips, then Enter.", H + 20, H)
+                if p is None:
+                    return
+                corners[name] = p
+                mover.line_to(p - [0, 0, 60])
+            b = Board(corners["a1"], corners["h1"], corners["a8"], drop=corners["a1"])
+            keep_grip_settings(b)
+            check_board(mover, b)
+        p = jog(mover, "Move the fingertips 5-10 cm above the bin for captured pieces (where it lets go), then Enter.\n"
+                "    Put the bin right next to the middle of one side of the board, about 20 cm from the point under the arm.",
                 b.floor(-20), b.floor(0))
         if p is None:
             return
@@ -192,6 +186,33 @@ def main():
         if started:
             go_home(arm)
         arm.close()
+
+
+def keep_grip_settings(b):
+    """A new calibration keeps the grip settings tuned with try_move (grip heights, holding margin)."""
+    try:
+        old = Board.load()
+    except (FileNotFoundError, KeyError, ValueError):
+        return
+    b.grip, b.held_margin, b.gripper_open = old.grip, old.held_margin, old.gripper_open
+
+
+def check_board(mover, b):
+    """After the three corners: report the squares, pick the carrying height, and check h8."""
+    fs, rs = b.square_size()
+    print(f"\nSquares: {fs:.1f} mm along the ranks, {rs:.1f} mm along the files.")
+    b.travel = carry_height(b)
+    print(f"Carrying height: {b.travel:.0f} mm above the board (the highest that reaches every square).")
+    if b.travel < CARRY_WANTED:
+        print(f"  That's below {CARRY_WANTED:.0f} mm: a carried king or queen only just clears the king. "
+              f"Raising the arm on the frame by about {(CARRY_WANTED - b.travel) * 1.6:.0f} mm would fix it.")
+
+    h8 = b.square(chess.H8, 15)
+    mover.go_to(b.square(chess.H8, 60), floor=b.floor(40))
+    mover.line_to(h8)
+    if not yes_no("Check: are the fingertips 15 mm above the centre of h8? [y/n] "):
+        raise Unsafe("the h8 check failed: run the calibration again, touching the square centres carefully")
+    mover.line_to(b.square(chess.H8, 60))
 
 
 def go_home(arm):
