@@ -179,7 +179,7 @@ def main():
                 if p is None:
                     return
                 corners[name] = p
-                mover.line_to(p - [0, 0, 60])
+                lift(mover, p)
             b = Board(corners["a1"], corners["h1"], corners["a8"], drop=corners["a1"], h8=corners["h8"])
             keep_grip_settings(b)
             check_board(mover, b)
@@ -199,6 +199,18 @@ def main():
         if started:
             go_home(arm)
         arm.close()
+
+
+def lift(mover, p, up=60.0):
+    """After touching a corner, lift the fingertips: straight up if possible, otherwise with a joint
+    move that only goes up. If neither works, stay put: the keys can lift it."""
+    for go in (lambda: mover.line_to(p - [0, 0, up]), lambda: mover.go_to(p - [0, 0, up], floor=p[2])):
+        try:
+            go()
+            return
+        except Unsafe:
+            pass
+    print("    (couldn't lift by itself from here: raise it with the keys)")
 
 
 def keep_grip_settings(b):

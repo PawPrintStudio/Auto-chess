@@ -38,7 +38,8 @@ class Mover:
         start = np.array(self.q if self.q is not None else self.refresh())
         end = np.array(q4, float)
         if not within_limits(end):
-            raise Unsafe("target is outside the joint limits")
+            j = next(i for i, (a, (lo, hi)) in enumerate(zip(end, LIMITS)) if not lo <= a <= hi)
+            raise Unsafe(f"the {['base', 'shoulder', 'elbow', 'wrist'][j]} is at the end of its range")
         for f in np.linspace(0, 1, 30)[1:]:
             q = start + (end - start) * f
             if not clear_of_mount(q[1:]):
