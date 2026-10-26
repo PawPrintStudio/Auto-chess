@@ -186,7 +186,9 @@ The line on screen shows each motor's angle, roughly how high the fingertips are
 and how far the gripper is tilted from straight down (keep it near 0 when you touch a square).
 Touch the centres of **a1** (White's left corner), **h1** (White's right corner) and **a8** (Black's
 corner on White's left) with the closed fingertips, then go 5–10 cm above the bin. Every other square
-follows from those three points. It then shows you h8 to check. However it ends (finished,
+follows from those three points. It also picks the carrying height: the highest (up to 145 mm) at which the arm
+reaches every square. If that's under 145 mm, the arm hangs a bit low: it says how much to raise it.
+It then shows you h8 to check. However it ends (finished,
 `q`, or an error), the arm goes back to its home pose by itself. The result is saved in
 `data/board.json` (not in git: it belongs to this robot).
 

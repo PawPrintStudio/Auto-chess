@@ -21,6 +21,7 @@ import chess
 import numpy as np
 
 from .geometry import GRIPPER_CLOSED, Board
+from .kinematics import ik
 from .motion import Mover, Unsafe
 from .park import follow, plan
 
@@ -112,6 +113,19 @@ def jog(mover, prompt, deepest, board_depth):
                     print(f"\n    can't go there: {e}")
 
 
+CARRY_WANTED = 145.0      # a piece held 42 mm up then clears the 80 mm king by 20 mm
+
+
+def carry_height(board, best=CARRY_WANTED, lowest_ok=90.0):
+    """The highest fingertip height (up to `best`) at which the arm reaches every square."""
+    h = best
+    while h >= lowest_ok:
+        if all(ik(board.square(s, h)) is not None for s in chess.SQUARES):
+            return h
+        h -= 1.0
+    raise Unsafe("the arm can't reach every square even 9 cm above the board: is the board under the arm?")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Calibrate the board position")
     ap.add_argument("--height", type=float, default=430.0,
@@ -151,6 +165,11 @@ def main():
         b = Board(corners["a1"], corners["h1"], corners["a8"], drop=corners["a1"])
         fs, rs = b.square_size()
         print(f"\nSquares: {fs:.1f} mm along the ranks, {rs:.1f} mm along the files.")
+        b.travel = carry_height(b)
+        print(f"Carrying height: {b.travel:.0f} mm above the board (the highest that reaches every square).")
+        if b.travel < CARRY_WANTED:
+            print(f"  That's below {CARRY_WANTED:.0f} mm: a carried king or queen only just clears the king. "
+                  f"Raising the arm on the frame by about {(CARRY_WANTED - b.travel) * 1.6:.0f} mm would fix it.")
 
         h8 = b.square(chess.H8, 15)
         mover.go_to(b.square(chess.H8, 60), floor=b.floor(40))
