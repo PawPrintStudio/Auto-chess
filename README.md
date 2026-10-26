@@ -172,12 +172,20 @@ bin for captured pieces beside it. Then:
 python3 -m autochess.calibrate --height 430
 ```
 
-`--height` is roughly the distance from the board up to the base plate. You steer the closed
-fingertips with the keyboard (`w a s d` across, `r f` up and down, `1 2 3` for steps of 1, 5 or
-20 mm, Enter to confirm) to touch the centres of **a1** (White's left corner), **h1** (White's right
-corner) and **a8** (Black's corner on White's left), then 5–10 cm above the bin.
-Directly behind the arm is where the base reaches the end of its range; if a key press would
-cross that line, the arm swings round the other way by itself (slowly, never lower than it is). Every other square
+`--height` is roughly the distance from the board up to the base plate. You steer the arm with the
+keyboard, one motor at a time (wait for each move to finish before the next key):
+
+| Keys | Motor | | Keys | |
+|---|---|---|---|---|
+| `a` / `z` | base +/- | | `1` `2` `3` | steps of 1, 3 or 10 degrees |
+| `s` / `x` | shoulder +/- | | `Enter` | this is the spot |
+| `d` / `c` | elbow +/- | | `q` | quit without saving |
+| `f` / `v` | wrist +/- | | `m` | switch to fingertip keys (`w s a d` across, `r f` up and down) |
+
+The line on screen shows each motor's angle, roughly how high the fingertips are above the board,
+and how far the gripper is tilted from straight down (keep it near 0 when you touch a square).
+Touch the centres of **a1** (White's left corner), **h1** (White's right corner) and **a8** (Black's
+corner on White's left) with the closed fingertips, then go 5–10 cm above the bin. Every other square
 follows from those three points. It then shows you h8 to check. However it ends (finished,
 `q`, or an error), the arm goes back to its home pose by itself. The result is saved in
 `data/board.json` (not in git: it belongs to this robot).

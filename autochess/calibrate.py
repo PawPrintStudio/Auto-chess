@@ -1,11 +1,16 @@
 """Teach the arm where the board is:  python3 -m autochess.calibrate [--height 430]
 
-You steer the fingertips with the keyboard to the centres of a1, h1 and a8 (just touching the board),
-then to the spot where captured pieces are dropped. The result is saved in data/board.json.
+You steer the fingertips to the centres of a1, h1 and a8 (just touching the board), then to the spot
+where captured pieces are dropped. The result is saved in data/board.json.
 
-  w / s   away from / toward the arm's front        r / f   up / down
-  a / d   sideways                                   1 2 3   step 1, 5 or 20 mm
-  Enter   this is the spot                           q       quit without saving
+Joint keys (the default): each press turns one motor a little.
+  a / z   base        +/-        1 2 3   step 1, 3 or 10 degrees
+  s / x   shoulder    +/-        m       switch to fingertip keys
+  d / c   elbow       +/-        Enter   this is the spot
+  f / v   wrist       +/-        q       quit without saving
+
+Fingertip keys (after m): w / s and a / d move across, r / f up and down, 1 2 3 = 1, 5 or 20 mm.
+Wait for each move to finish before pressing the next key.
 """
 import argparse
 import sys
@@ -19,8 +24,11 @@ from .geometry import GRIPPER_CLOSED, Board
 from .motion import Mover, Unsafe
 from .park import follow, plan
 
-STEPS = {"1": 1.0, "2": 5.0, "3": 20.0}
+STEPS = {"1": 1.0, "2": 5.0, "3": 20.0}                 # mm, fingertip keys
 MOVES = {"w": (1, 0, 0), "s": (-1, 0, 0), "a": (0, 1, 0), "d": (0, -1, 0), "r": (0, 0, -1), "f": (0, 0, 1)}
+JOINT_STEPS = {"1": 1.0, "2": 3.0, "3": 10.0}           # degrees, joint keys
+JOINT_KEYS = {"a": (0, 1), "z": (0, -1), "s": (1, 1), "x": (1, -1),
+              "d": (2, 1), "c": (2, -1), "f": (3, 1), "v": (3, -1)}
 
 
 def read_key():
@@ -47,14 +55,21 @@ def yes_no(question):
         print("Please type y or n, then Enter.")
 
 
-def jog(mover, prompt, deepest):
-    """Let the user steer the fingertips; returns the point when they press Enter (None on q)."""
-    step = 5.0
+def jog(mover, prompt, deepest, board_depth):
+    """Let the user steer the arm; returns the fingertip point when they press Enter (None on q).
+    Nothing goes deeper than `deepest` (mm below the plate)."""
+    joint_mode, step, jstep = True, 5.0, 3.0
     print(f"\n>>> {prompt}")
     while True:
-        p = mover.where()
-        print(f"\r    fingertips X {p[0]:7.1f}  Y {p[1]:7.1f}  depth {p[2]:6.1f} mm   step {step:4.0f} mm   ",
-              end="", flush=True)
+        p, q = mover.where(), mover.q
+        tilt = abs(np.degrees(sum(q[1:]) + np.pi / 2))
+        if joint_mode:
+            status = (f"base {np.degrees(q[0]):+4.0f} sh {np.degrees(q[1]):+4.0f} el {np.degrees(q[2]):+4.0f}"
+                      f" wr {np.degrees(q[3]):+4.0f} | {board_depth - p[2]:4.0f} mm up, tilt {tilt:2.0f}"
+                      f" | step {jstep:2.0f} deg ")
+        else:
+            status = f"X {p[0]:6.0f} Y {p[1]:6.0f} | {board_depth - p[2]:4.0f} mm up | step {step:2.0f} mm "
+        print("\r    " + status, end="", flush=True)
         termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)    # keys pressed while it was moving
         k = read_key().lower()
         if k in ("\n", "\r"):
@@ -63,9 +78,23 @@ def jog(mover, prompt, deepest):
         if k == "q":
             print()
             return None
-        if k in STEPS:
+        if k == "m":
+            joint_mode = not joint_mode
+            print("\n    " + ("joint keys: a/z base, s/x shoulder, d/c elbow, f/v wrist" if joint_mode
+                              else "fingertip keys: w/s a/d across, r/f up and down"))
+        elif joint_mode and k in JOINT_STEPS:
+            jstep = JOINT_STEPS[k]
+        elif not joint_mode and k in STEPS:
             step = STEPS[k]
-        elif k in MOVES:
+        elif joint_mode and k in JOINT_KEYS:
+            j, sign = JOINT_KEYS[k]
+            target = list(q)
+            target[j] += sign * np.radians(jstep)
+            try:
+                mover.joint_move(tuple(target), floor=deepest, seconds=max(0.4, np.radians(jstep) / 0.4))
+            except Unsafe as e:
+                print(f"\n    not moving: {e}")
+        elif not joint_mode and k in MOVES:
             target = p + step * np.array(MOVES[k])
             if target[2] > deepest:
                 print("\n    (that's below where the board should be: not going lower)")
@@ -114,7 +143,7 @@ def main():
         corners = {}
         for name, where in (("a1", "White's left corner square"), ("h1", "White's right corner square"),
                             ("a8", "Black's corner square on White's left side")):
-            p = jog(mover, f"Touch the centre of {name} ({where}) with the fingertips, then Enter.", H + 20)
+            p = jog(mover, f"Touch the centre of {name} ({where}) with the fingertips, then Enter.", H + 20, H)
             if p is None:
                 return
             corners[name] = p
@@ -132,7 +161,7 @@ def main():
         mover.line_to(b.square(chess.H8, 60))
 
         p = jog(mover, "Move the fingertips 5-10 cm above the bin for captured pieces (where it lets go), then Enter.",
-                b.floor(-20))
+                b.floor(-20), b.floor(0))
         if p is None:
             return
         b.drop = p
