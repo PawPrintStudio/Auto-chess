@@ -192,7 +192,10 @@ def main():
         for i, (q4, seconds, label) in enumerate(steps, 1):
             print(f"Move {i}: " + "  ".join(f"{a:+.2f}" for a in q4) + f"   ({label}, {seconds:.0f} s)")
         if not args.yes and moves:
-            input("Keep a hand near the arm and the 12 V switch. Press Enter to move (Ctrl+C to cancel)... ")
+            try:
+                input("Keep a hand near the arm and the 12 V switch. Press Enter to move (Ctrl+C to cancel)... ")
+            except KeyboardInterrupt:
+                sys.exit("\nCancelled: the arm didn't move.")
         if not follow(arm, moves):
             sys.exit("The move didn't finish: check the arm and the bringup terminal.")
         print("Parked." if moves else "Already parked.")

@@ -59,6 +59,8 @@ def main():
             print("Saved the grip settings.")
     except (ValueError, Unsafe) as e:
         print(f"Stopped: {e}")
+    except KeyboardInterrupt:
+        print("\nStopped.")
     finally:
         ros.close()
 

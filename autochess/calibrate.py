@@ -182,6 +182,8 @@ def main():
         print("Saved data/board.json.")
     except Unsafe as e:
         print(f"\nStopped: {e}")
+    except KeyboardInterrupt:
+        print("\nStopped.")
     finally:
         if started:
             go_home(arm)
