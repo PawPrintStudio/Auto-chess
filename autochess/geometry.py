@@ -24,6 +24,8 @@ GRIP = {chess.PAWN: 22.0, chess.ROOK: 25.0, chess.KNIGHT: 28.0, chess.BISHOP: 32
         chess.QUEEN: 38.0, chess.KING: 42.0}
 GRIPPER_OPEN = 0.0      # partly open (about 40 mm between the fingers), so they miss the neighbours
 GRIPPER_CLOSED = -0.01
+GRIPPER_FULL_OPEN = 0.019
+RELEASE = 0.008         # letting go: open this much (per finger) wider than where the fingers stopped on the piece
 GRIP_EFFORT = 60.0
 EMPTY_GRIP = -0.008     # fingers closed past this: nothing between them (until start() measures it)
 HELD_MARGIN = 0.001     # fingers stopping 1 mm short of an empty close: they're holding a piece

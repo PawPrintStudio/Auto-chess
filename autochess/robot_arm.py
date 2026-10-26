@@ -7,7 +7,7 @@ the rest of the move by hand, then carries on with the game.
 import chess
 import numpy as np
 
-from .geometry import CLEARANCE, EMPTY_GRIP, GRIP_EFFORT, GRIPPER_CLOSED, TALLEST
+from .geometry import CLEARANCE, EMPTY_GRIP, GRIP_EFFORT, GRIPPER_CLOSED, GRIPPER_FULL_OPEN, RELEASE, TALLEST
 from .kinematics import ik, joint_points
 from .motion import Mover, Unsafe
 from .park import follow, plan
@@ -73,6 +73,7 @@ class RealArm:
         self.mover = Mover(ros_arm)
         self.ask = None             # set by the game: ask(text) shows text and waits for Done
         self.holding, self.held = False, None    # held: (square it came from, piece)
+        self.grip_pos = None                      # where the fingers stopped on the held piece
         self.empty_limit = EMPTY_GRIP             # learned in start()
 
     def start(self):
@@ -111,8 +112,7 @@ class RealArm:
                     try:
                         self._put(*self.held)
                     except Unsafe:
-                        self.ros.gripper(self.geo.gripper_open)
-                        self.holding = False
+                        self.release()
                         note = f"I dropped the {NAMES[self.held[1]]}: put it back on {chess.square_name(self.held[0])}. "
                 self._park_and_ask(steps[start:], board.turn, failed=True, note=note)
                 return
@@ -146,7 +146,7 @@ class RealArm:
             self.log(f"[arm] gripper closed to {got if got is not None else float('nan'):+.4f} on the {NAMES[piece]}"
                      f" ({'holding it' if got is not None and got > self.empty_limit else 'nothing there'})")
             if got is not None and got > self.empty_limit:
-                self.holding, self.held = True, (sq, piece)
+                self.holding, self.held, self.grip_pos = True, (sq, piece), got
                 self.mover.line_to(self._above(sq))
                 return
             self.ros.gripper(self.geo.gripper_open)
@@ -157,8 +157,7 @@ class RealArm:
     def _put(self, sq, piece):
         self.mover.go_to(self._above(sq), floor=self._floor())
         self.mover.line_to(self.geo.square(sq, self.geo.grip[piece] + 2))
-        self.ros.gripper(self.geo.gripper_open)
-        self.holding = False
+        self.release()
         self.mover.line_to(self._above(sq))
 
     def _bin(self, sq, piece):
@@ -179,10 +178,21 @@ class RealArm:
         except Unsafe:
             lowered = False          # can't get down to it safely from here: let go above it, it falls in
             self.log("[arm] letting go above the bin instead")
-        self.ros.gripper(self.geo.gripper_open)
-        self.holding = False
+        self.release()
         if lowered:
             self.mover.joint_move(q_up)
+
+    def release(self):
+        """Let go of the held piece: open a clear 8 mm per finger wider than where the fingers stopped
+        on it (the usual part-open isn't enough for wide pieces like knights), check they really
+        opened, and if not open all the way."""
+        target = min(GRIPPER_FULL_OPEN, max(self.geo.gripper_open, (self.grip_pos or GRIPPER_CLOSED) + RELEASE))
+        got = self.ros.gripper(target)
+        if got is not None and got < target - 0.003:
+            self.log(f"[arm] fingers only opened to {got:+.4f}: opening all the way")
+            got = self.ros.gripper(GRIPPER_FULL_OPEN)
+        self.log(f"[arm] let go: fingers at {got if got is not None else float('nan'):+.4f}")
+        self.holding, self.grip_pos = False, None
 
     def _park_and_ask(self, steps, color, failed=False, note=""):
         try:

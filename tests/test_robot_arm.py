@@ -219,3 +219,31 @@ def test_calibration_progress_survives_a_stop(tmp_path, monkeypatch):
     cal.save_progress({"a1": np.array([1.0, 2.0, 3.0]), "h1": np.array([4.0, 5.0, 6.0])})
     done = cal.load_progress()
     assert list(done) == ["a1", "h1"] and done["h1"] == pytest.approx([4.0, 5.0, 6.0])
+
+
+def test_letting_go_opens_wider_than_the_piece_and_retries_if_stuck():
+    from autochess.geometry import GRIPPER_FULL_OPEN, RELEASE
+
+    class StickyRos(FakeRos):
+        def __init__(self):
+            super().__init__()
+            self.opens = []
+
+        def gripper(self, position, effort=100.0):
+            if position == GRIPPER_CLOSED:
+                return super().gripper(position, effort)
+            self.opens.append(position)
+            # the first release sticks (fingers stay on the knight), the next one works
+            if len(self.opens) == 3:
+                return 0.004
+            return position
+
+    ros = StickyRos()
+    arm = RealArm(ros, my_board(), log=lambda s: None)
+    arm.ask = pytest.fail
+    arm.start()
+    arm.play(chess.Board(), chess.Move.from_uci("g1f3"))
+    # opens: start(), part-open before grabbing, then the release (wider than where it gripped: 0.004 + RELEASE)
+    assert ros.opens[2] == pytest.approx(0.004 + RELEASE)
+    assert ros.opens[3] == GRIPPER_FULL_OPEN          # it stuck, so it opened all the way
+    assert not arm.holding
