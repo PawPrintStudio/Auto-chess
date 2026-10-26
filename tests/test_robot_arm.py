@@ -210,3 +210,12 @@ def test_tilted_low_board_like_the_real_one(drop):
         m = chess.Move.from_uci(uci)
         arm.play(board, m)
         board.push(m)
+
+
+def test_calibration_progress_survives_a_stop(tmp_path, monkeypatch):
+    import autochess.calibrate as cal
+    monkeypatch.setattr(cal, "PROGRESS_FILE", tmp_path / "calibration_progress.json")
+    assert cal.load_progress() == {}
+    cal.save_progress({"a1": np.array([1.0, 2.0, 3.0]), "h1": np.array([4.0, 5.0, 6.0])})
+    done = cal.load_progress()
+    assert list(done) == ["a1", "h1"] and done["h1"] == pytest.approx([4.0, 5.0, 6.0])

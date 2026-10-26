@@ -13,6 +13,7 @@ Fingertip keys (after m): w / s and a / d move across, r / f up and down, 1 2 3 
 Wait for each move to finish before pressing the next key.
 """
 import argparse
+import json
 import sys
 import termios
 import tty
@@ -20,7 +21,7 @@ import tty
 import chess
 import numpy as np
 
-from .geometry import GRIPPER_CLOSED, Board
+from .geometry import BOARD_FILE, GRIPPER_CLOSED, Board
 from .kinematics import ik
 from .motion import Mover, Unsafe
 from .park import follow, plan
@@ -158,6 +159,12 @@ def main():
         except ValueError as e:
             sys.exit(f"Not moving: {e}")
         print(__doc__)
+        corners = {}
+        if not args.bin_only:
+            done = load_progress()
+            if done and yes_no(f"An unfinished calibration already has {', '.join(done)}. Keep those and do only the "
+                               f"rest? (The board and the arm mustn't have moved since.) [y/n] "):
+                corners = done
         ask("Clear the pieces off the board (leave the board in place). Keep a hand near the 12 V switch.\n"
             "Press Enter to park the arm and start... ")
         started = True
@@ -172,17 +179,25 @@ def main():
             b = Board.load()
             mover.go_to(b.square(chess.E4, b.travel), floor=b.floor(b.travel - 10))
         else:
-            corners = {}
             for name, where in CORNERS:
+                if name in corners:
+                    continue                      # touched in an earlier, unfinished calibration
                 p = jog(mover, f"Touch the centre of {name} ({where}) with the fingertips, then Enter.", H + 20, H,
                         straight=True)
                 if p is None:
                     return
                 corners[name] = p
+                save_progress(corners)            # kept even if the calibration stops later
                 lift(mover, p)
             b = Board(corners["a1"], corners["h1"], corners["a8"], drop=corners["a1"], h8=corners["h8"])
             keep_grip_settings(b)
-            check_board(mover, b)
+            describe_board(b)
+            b.save()                              # usable now (with the old bin, if there was one)
+            print("Saved the corners in data/board.json.")
+            try:
+                check_e5(mover, b)
+            except Unsafe as e:
+                print(f"  (couldn't show e5: {e}. The corners are saved; check a move with try_move.)")
         p = jog(mover, "Move the fingertips 5-10 cm above the bin for captured pieces (where it lets go), then Enter.\n"
                 "    Put the bin right next to the middle of one side of the board, about 20 cm from the point under the arm.",
                 b.floor(-20), b.floor(0))
@@ -190,6 +205,7 @@ def main():
             return
         b.drop = p
         b.save()
+        PROGRESS_FILE.unlink(missing_ok=True)
         print("Saved data/board.json.")
     except Unsafe as e:
         print(f"\nStopped: {e}")
@@ -213,6 +229,22 @@ def lift(mover, p, up=60.0):
     print("    (couldn't lift by itself from here: raise it with the keys)")
 
 
+PROGRESS_FILE = BOARD_FILE.parent / "calibration_progress.json"
+
+
+def save_progress(corners):
+    PROGRESS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    PROGRESS_FILE.write_text(json.dumps({k: [float(x) for x in v] for k, v in corners.items()}, indent=2))
+
+
+def load_progress():
+    """Corners touched in an unfinished calibration: {name: point}."""
+    try:
+        return {k: np.array(v, float) for k, v in json.loads(PROGRESS_FILE.read_text()).items()}
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
 def keep_grip_settings(b):
     """A new calibration keeps the grip settings tuned with try_move (grip heights, holding margin)."""
     try:
@@ -222,16 +254,20 @@ def keep_grip_settings(b):
     b.grip, b.held_margin, b.gripper_open = old.grip, old.held_margin, old.gripper_open
 
 
-def check_board(mover, b):
-    """After the four corners: report the squares, pick the carrying height, and check a middle square."""
+def describe_board(b):
+    """After the four corners: report the squares and pick the carrying height."""
     fs, rs = b.square_size()
     print(f"\nSquares: {fs:.1f} mm along the ranks, {rs:.1f} mm along the files.")
     b.travel = carry_height(b)
     print(f"Carrying height: {b.travel:.0f} mm above the board (the highest that reaches every square).")
     if b.travel < CARRY_WANTED:
-        print(f"  That's below {CARRY_WANTED:.0f} mm: a carried king or queen only just clears the king. "
-              f"Raising the arm on the frame by about {(CARRY_WANTED - b.travel) * 1.6:.0f} mm would fix it.")
+        print(f"  That's below {CARRY_WANTED:.0f} mm: carried pieces may not clear the tall ones. The arm hangs "
+              f"too close to the board: raise it on the frame (each 1 cm up adds about 1 cm here, up to "
+              f"~{CARRY_WANTED:.0f} mm).")
 
+
+def check_e5(mover, b):
+    """Show e5, in the middle, 15 mm up, and ask if it's right."""
     mover.go_to(b.square(chess.E5, 60), floor=b.floor(40))
     mover.line_to(b.square(chess.E5, 15))
     if not yes_no("Check: are the fingertips 15 mm above the centre of e5? [y/n] "):

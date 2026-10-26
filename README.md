@@ -167,7 +167,10 @@ that is (this takes a few seconds). It prints the moves, asks, and moves slowly.
 
 Take the pieces off, leave the board where it will stay (mark or fix its position), and put the
 bin for captured pieces right next to the middle of one side, about 20–22 cm from the point under
-the arm. A new calibration keeps the grip settings you tuned with `try_move`. To move only the bin
+the arm. A new calibration keeps the grip settings you tuned with `try_move`. Each corner is saved as soon as you
+confirm it: if a calibration stops part way, the next one offers to keep those corners and ask only
+for the rest (as long as neither the board nor the arm has moved). The corners are written to
+`data/board.json` straight after the fourth, before the e5 check and the bin. To move only the bin
 later: `python3 -m autochess.calibrate --bin-only`. Then:
 
 ```bash
