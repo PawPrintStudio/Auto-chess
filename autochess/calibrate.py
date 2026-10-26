@@ -145,8 +145,14 @@ def main():
                     help="keep the saved board corners and only set the bin for captured pieces again")
     ap.add_argument("--height", type=float, default=430.0,
                     help="roughly how far the board is below the arm's base plate, mm (default 430)")
+    ap.add_argument("--raised", type=float, metavar="MM",
+                    help="the arm was raised straight up by MM (lowered: negative): shift the saved calibration "
+                         "by that much instead of touching the corners again (no arm movement)")
     args = ap.parse_args()
     H = args.height
+    if args.raised is not None:
+        shift_saved(args.raised)
+        return
 
     from .ros_arm import RosArm
     arm = RosArm()
@@ -252,6 +258,17 @@ def keep_grip_settings(b):
     except (FileNotFoundError, KeyError, ValueError):
         return
     b.grip, b.held_margin, b.gripper_open = old.grip, old.held_margin, old.gripper_open
+
+
+def shift_saved(mm):
+    """The arm moved straight up by mm: the board and the bin are now mm further below it."""
+    b = Board.load()
+    for p in (b.a1, b.h1, b.a8, b.h8, b.drop):
+        p[2] += mm
+    print(f"Shifted the saved calibration: the board is now {mm:+.0f} mm further below the arm.")
+    describe_board(b)
+    b.save()
+    print("Saved data/board.json. Check it with one move: python3 -m autochess.try_move e2e4")
 
 
 def describe_board(b):

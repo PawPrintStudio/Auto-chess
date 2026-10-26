@@ -171,7 +171,10 @@ the arm. A new calibration keeps the grip settings you tuned with `try_move`. Ea
 confirm it: if a calibration stops part way, the next one offers to keep those corners and ask only
 for the rest (as long as neither the board nor the arm has moved). The corners are written to
 `data/board.json` straight after the fourth, before the e5 check and the bin. To move only the bin
-later: `python3 -m autochess.calibrate --bin-only`. Then:
+later: `python3 -m autochess.calibrate --bin-only`. If you raise or lower the arm **straight up or down** on
+the frame, you don't have to touch the corners again: measure how far it moved and run
+`python3 -m autochess.calibrate --raised 35` (35 mm up; use a negative number for down). It shifts
+the saved calibration and reports the new carrying height, without moving the arm. Then:
 
 ```bash
 python3 -m autochess.calibrate --height 430
