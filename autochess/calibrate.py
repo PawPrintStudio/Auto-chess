@@ -33,6 +33,20 @@ def read_key():
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
+def ask(question):
+    """Ask a question, ignoring any keys typed earlier (e.g. while the arm was still moving)."""
+    termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
+    return input(question)
+
+
+def yes_no(question):
+    while True:
+        answer = ask(question).strip().lower()
+        if answer in ("y", "yes", "n", "no"):
+            return answer.startswith("y")
+        print("Please type y or n, then Enter.")
+
+
 def jog(mover, prompt, deepest):
     """Let the user steer the fingertips; returns the point when they press Enter (None on q)."""
     step = 5.0
@@ -41,6 +55,7 @@ def jog(mover, prompt, deepest):
         p = mover.where()
         print(f"\r    fingertips X {p[0]:7.1f}  Y {p[1]:7.1f}  depth {p[2]:6.1f} mm   step {step:4.0f} mm   ",
               end="", flush=True)
+        termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)    # keys pressed while it was moving
         k = read_key().lower()
         if k in ("\n", "\r"):
             print()
@@ -86,8 +101,8 @@ def main():
         except ValueError as e:
             sys.exit(f"Not moving: {e}")
         print(__doc__)
-        input("Clear the pieces off the board (leave the board in place). Keep a hand near the 12 V switch.\n"
-              "Press Enter to park the arm and start... ")
+        ask("Clear the pieces off the board (leave the board in place). Keep a hand near the 12 V switch.\n"
+            "Press Enter to park the arm and start... ")
         started = True
         if not follow(arm, moves):                # the same safe route as autochess.park
             sys.exit("The arm didn't finish going to its home pose.")
@@ -111,7 +126,7 @@ def main():
         h8 = b.square(chess.H8, 15)
         mover.go_to(b.square(chess.H8, 60), floor=b.floor(40))
         mover.line_to(h8)
-        if input("Check: are the fingertips 15 mm above the centre of h8? [y/n] ").strip().lower() != "y":
+        if not yes_no("Check: are the fingertips 15 mm above the centre of h8? [y/n] "):
             print("Then something's off. Run the calibration again, touching the square centres carefully.")
             return
         mover.line_to(b.square(chess.H8, 60))
