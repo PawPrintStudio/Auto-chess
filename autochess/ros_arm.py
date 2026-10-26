@@ -73,21 +73,23 @@ class RosArm:
         done = self._send(self._arm, goal, times[-1] + 10)
         return done is not None and done.status == 4      # GoalStatus.STATUS_SUCCEEDED
 
-    def gripper(self, position, effort=100.0):
-        """Open or close the gripper. Returns where the fingers stopped (m), or None if it failed.
-        Closing on a piece stops early; closing on nothing goes all the way to GRIPPER_CLOSED."""
+    def gripper(self, position, effort=100.0, seconds=2.5):
+        """Open or close the gripper, give it `seconds`, and return where the fingers actually are (m),
+        from /joint_states. Closing on a piece stops early; closing on nothing goes all the way.
+        (When the fingers are blocked by a piece the controller may never report the goal as done,
+        so this doesn't wait for that.) None if the gripper isn't reporting."""
         if not self._grip.wait_for_server(timeout_sec=10.0):
             raise RuntimeError("the gripper controller isn't running")
         goal = GripperCommand.Goal()
         goal.command.position = float(position)
         goal.command.max_effort = float(effort)
-        done = self._send(self._grip, goal, 10)
-        if done is None:
+        sent = self._grip.send_goal_async(goal)
+        if not _wait(sent, 5) or not sent.result().accepted:
             return None
-        time.sleep(0.2)
+        _wait(sent.result().get_result_async(), seconds)
+        time.sleep(0.3)                      # let the fingers settle and /joint_states catch up
         with self._lock:
-            finger = self._gripper
-        return finger if finger is not None else done.result.position
+            return self._gripper
 
     def _send(self, client, goal, timeout):
         sent = client.send_goal_async(goal)

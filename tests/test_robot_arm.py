@@ -37,6 +37,8 @@ class FakeRos:
     def gripper(self, position, effort=100.0):
         if position == GRIPPER_CLOSED:
             self.closes += 1
+            if fingertip(self.q)[2] < H - 100:      # up high (start() learning the empty close): nothing there
+                return GRIPPER_CLOSED
             return self.grips.pop(0) if self.grips else 0.004
         return position
 
@@ -84,7 +86,7 @@ def test_a_move_goes_down_grips_and_never_dips_while_travelling():
     arm.start()
     board = chess.Board("4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1")
     arm.play(board, chess.Move.from_uci("e4d5"))        # a capture: d5 to the bin, then e4 to d5
-    assert ros.closes == 2
+    assert ros.closes == 3                             # the empty test close, then two pieces
     lows = [H - p[2] for p in ros.points]
     assert min(lows) == pytest.approx(min(arm.geo.grip[chess.PAWN], H - arm.geo.drop[2]), abs=1)
 

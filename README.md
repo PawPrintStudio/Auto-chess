@@ -204,7 +204,10 @@ python3 -m autochess.try_move g1f3 --grip n=30 --save    # keep that height
 
 Each piece type is gripped at its own height above the board (pawn 22, rook 25, knight 28,
 bishop 32, queen 38, king 42 mm to start with). The gripper opens only part way (about 40 mm),
-so it doesn't knock the neighbouring pieces.
+so it doesn't knock the neighbouring pieces. When the arm starts, it closes the gripper once on
+nothing to learn where empty fingers end up; later, fingers that stop at least 1 mm short of
+that are holding a piece. Each close prints the finger position, e.g.
+`[arm] gripper closed to -0.0052 on the pawn (holding it)`.
 
 **6. If something goes wrong**
 

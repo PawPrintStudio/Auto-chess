@@ -7,7 +7,7 @@ the rest of the move by hand, then carries on with the game.
 import chess
 import numpy as np
 
-from .geometry import EMPTY_GRIP, GRIP_EFFORT, GRIPPER_CLOSED
+from .geometry import EMPTY_GRIP, GRIP_EFFORT, GRIPPER_CLOSED, HELD_MARGIN
 from .kinematics import ik
 from .motion import Mover, Unsafe
 from .park import follow, plan
@@ -73,6 +73,7 @@ class RealArm:
         self.mover = Mover(ros_arm)
         self.ask = None             # set by the game: ask(text) shows text and waits for Done
         self.holding, self.held = False, None    # held: (square it came from, piece)
+        self.empty_limit = EMPTY_GRIP             # learned in start()
 
     def start(self):
         """Go to the home (park) pose from wherever the arm is now, by the same safe route as
@@ -83,6 +84,11 @@ class RealArm:
             raise Unsafe("the arm didn't finish going to its home pose")
         if moves:
             self.mover.q = tuple(moves[-1][0])
+        # Close once on nothing to learn where empty fingers end up: closing on a piece stops short of that.
+        empty = self.ros.gripper(GRIPPER_CLOSED, GRIP_EFFORT)
+        self.empty_limit = (empty + HELD_MARGIN) if empty is not None else EMPTY_GRIP
+        self.log(f"[arm] empty gripper closes to {empty if empty is not None else float('nan'):+.4f};"
+                 f" holding a piece = stops above {self.empty_limit:+.4f}")
         self.ros.gripper(self.geo.gripper_open)
         self.holding = False
 
@@ -125,7 +131,9 @@ class RealArm:
         for attempt in range(2):
             self.mover.line_to(self.geo.square(sq, self.geo.grip[piece]))
             got = self.ros.gripper(GRIPPER_CLOSED, GRIP_EFFORT)
-            if got is not None and got > EMPTY_GRIP:
+            self.log(f"[arm] gripper closed to {got if got is not None else float('nan'):+.4f} on the {NAMES[piece]}"
+                     f" ({'holding it' if got is not None and got > self.empty_limit else 'nothing there'})")
+            if got is not None and got > self.empty_limit:
                 self.holding, self.held = True, (sq, piece)
                 self.mover.line_to(self._above(sq))
                 return
