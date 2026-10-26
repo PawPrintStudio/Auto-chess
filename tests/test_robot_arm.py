@@ -177,3 +177,15 @@ def test_crossing_behind_the_arm_swings_round_and_stays_level():
     m.go_to((-230.0, 5.0, 320.0), floor=330.0)   # ...so it swings round the long way
     assert m.q[0] > 3.0 and m.where() == pytest.approx((-230.0, 5.0, 320.0), abs=0.5)
     assert max(p[1] for p in joints_xyz(m.q[1:])) <= 330.0
+
+
+def test_calibration_saves_and_loads(tmp_path):
+    b = my_board()
+    b.travel = 125.0
+    b.grip[chess.PAWN] = 24.0
+    path = tmp_path / "board.json"
+    b.save(path)
+    c = Board.load(path)
+    assert c.square(chess.E4, 10) == pytest.approx(b.square(chess.E4, 10))
+    assert c.drop == pytest.approx(b.drop) and c.travel == 125.0
+    assert c.grip[chess.PAWN] == 24.0 and c.grip[chess.KING] == b.grip[chess.KING]

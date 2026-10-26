@@ -29,7 +29,8 @@ class Board:
     def __init__(self, a1, h1, a8, drop, grip=None, travel=TRAVEL, gripper_open=GRIPPER_OPEN):
         self.a1, self.h1, self.a8 = (np.array(p, float) for p in (a1, h1, a8))
         self.drop = np.array(drop, float)
-        self.grip = dict(GRIP, **({chess.PIECE_SYMBOLS.index(k): v for k, v in (grip or {}).items()}))
+        self.grip = dict(GRIP)
+        self.grip.update({chess.PIECE_SYMBOLS.index(k): float(v) for k, v in (grip or {}).items()})
         self.travel, self.gripper_open = travel, gripper_open
 
     def square(self, sq, height=0.0):
