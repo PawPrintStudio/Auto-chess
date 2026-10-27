@@ -247,3 +247,109 @@ def test_letting_go_opens_wider_than_the_piece_and_retries_if_stuck():
     assert ros.opens[2] == pytest.approx(0.004 + RELEASE)
     assert ros.opens[3] == GRIPPER_FULL_OPEN          # it stuck, so it opened all the way
     assert not arm.holding
+
+
+def test_arm_that_stalls_short_never_closes_or_opens_the_gripper_there(monkeypatch):
+    class StallRos(FakeRos):
+        """Any move down onto the board leaves the elbow 0.2 rad (11°) short, as if against its limit."""
+        def move_path(self, points, times):
+            super().move_path(points, times)
+            if fingertip(self.q)[2] > H - 60:
+                self.q = (self.q[0], self.q[1], self.q[2] + 0.2, self.q[3])
+            return True
+
+    ros = StallRos()
+    asked = []
+    logs = []
+    arm = RealArm(ros, my_board(), log=logs.append)
+    arm.ask = asked.append
+    arm.start()
+    monkeypatch.setattr("autochess.motion.ARRIVE_TIMEOUT", 0.0)     # don't sit waiting in the test
+    arm.play(chess.Board(), chess.Move.from_uci("g1f3"))
+    assert ros.closes == 1                                   # only start()'s empty close: it never grabbed
+    assert asked and asked[0].startswith("I couldn't finish my move. Please move the knight from g1 to f3")
+    assert any("stopped short" in m and "elbow" in m for m in logs), logs
+
+
+def test_arrive_waits_for_the_joints_to_settle():
+    from autochess.motion import Mover, Unsafe
+
+    class Settling(FakeRos):
+        def __init__(self):
+            super().__init__()
+            self.reads = 0
+
+        def angles(self):
+            self.reads += 1
+            q = self.q
+            return q if self.reads > 3 else (q[0], q[1], q[2] + 0.2, q[3])      # off for the first reads
+
+    ros = Settling()
+    m = Mover(ros)
+    m.refresh()
+    m.q = (0.0, *HANGING)
+    ros.reads = 0
+    m.arrive(timeout=2.0)                                    # settles on the 4th read
+    assert ros.reads == 4
+    ros.reads = -10 ** 6
+    with pytest.raises(Unsafe, match="elbow"):
+        m.arrive(timeout=0.1)
+
+
+def test_each_piece_has_its_own_grip_strength(tmp_path):
+    efforts = []
+
+    class Ros(FakeRos):
+        def gripper(self, position, effort=100.0):
+            if position == GRIPPER_CLOSED:
+                efforts.append(effort)
+            return super().gripper(position, effort)
+
+    geo = my_board()
+    geo.effort[chess.KNIGHT] = 80.0
+    arm = RealArm(Ros(), geo, log=lambda s: None)
+    arm.ask = pytest.fail
+    arm.start()
+    arm.play(chess.Board(), chess.Move.from_uci("g1f3"))
+    assert efforts[-1] == 80.0 and efforts[0] == 60.0         # the knight squeezes at 80; the empty test close at the default
+    geo.save(tmp_path / "board.json")
+    back = Board.load(tmp_path / "board.json")
+    assert back.effort[chess.KNIGHT] == 80.0 and back.effort[chess.PAWN] == 60.0
+
+
+def test_arm_knows_which_moves_it_can_play():
+    geo = my_board()
+    arm = RealArm(FakeRos(), geo, log=lambda s: None)
+    capture = chess.Board("4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1")
+    assert arm.can_play(capture, chess.Move.from_uci("e4d5"))
+    geo.drop = np.array([0.0, -900.0, H - 90])               # a bin far out of reach
+    arm = RealArm(FakeRos(), geo, log=lambda s: None)
+    assert not arm.can_play(capture, chess.Move.from_uci("e4d5"))
+    assert arm.can_play(capture, chess.Move.from_uci("e4e5"))
+
+
+def test_engine_falls_back_to_a_move_the_arm_can_play():
+    import chess.engine
+    from autochess.engine import Engine, Level
+
+    board = chess.Board()
+    first, second, third = (chess.Move.from_uci(m) for m in ("e2e4", "d2d4", "g1f3"))
+
+    class FakeStockfish:
+        def configure(self, options):
+            pass
+
+        def play(self, b, limit):
+            return chess.engine.PlayResult(first, None)
+
+        def analyse(self, b, limit, multipv):
+            return [{"pv": [m]} for m in (first, second, third)]
+
+    e = Engine.__new__(Engine)
+    e.levels, e._sf = {"L": Level("L", 0, 0.01, 1)}, FakeStockfish()
+    import threading
+    e._lock = threading.Lock()
+    assert e.choose(board, "L") == first                                      # nothing to check: the engine's pick
+    assert e.choose(board, "L", playable=lambda m: m == first) == first       # playable: kept
+    assert e.choose(board, "L", playable=lambda m: m == third) == third       # skips the unplayable ones
+    assert e.choose(board, "L", playable=lambda m: False) == first            # none playable: the arm will ask

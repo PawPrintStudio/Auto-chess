@@ -252,12 +252,12 @@ def load_progress():
 
 
 def keep_grip_settings(b):
-    """A new calibration keeps the grip settings tuned with try_move (grip heights, holding margin)."""
+    """A new calibration keeps the grip settings tuned with try_move (grip heights, grip strengths, holding margin)."""
     try:
         old = Board.load()
     except (FileNotFoundError, KeyError, ValueError):
         return
-    b.grip, b.held_margin, b.gripper_open = old.grip, old.held_margin, old.gripper_open
+    b.grip, b.effort, b.held_margin, b.gripper_open = old.grip, old.effort, old.held_margin, old.gripper_open
 
 
 def shift_saved(mm):

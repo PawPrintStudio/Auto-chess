@@ -219,11 +219,23 @@ nothing to learn where empty fingers end up; later, fingers that stop at least 1
 that are holding a piece. Each close prints the finger position, e.g.
 `[arm] gripper closed to -0.0052 on the pawn (holding it)`.
 
+Each piece type also has its own squeeze (default 60 for all). If a tall piece (bishop, queen,
+king) slips while being carried, give it more: `python3 -m autochess.try_move d2d4 d7d5 d1d3 --effort q=80 --save`.
+
 **6. If something goes wrong**
 
 While carrying, the arm keeps its elbow and wrist above the tallest piece (the 80 mm king) plus
 15 mm, and the fingertips that much higher again as the held piece hangs below them. It measures
 this from the board surface right under it, so a board that isn't quite level is fine.
+
+Before the gripper closes on a piece or lets go of one, the arm checks that its joints really
+reached the pose it was sent to (within about 3°, waiting up to 2 s for them to settle). The
+controller says "done" even when a joint stalls short, for example an elbow against its limit,
+and a piece let go from the wrong place lands on the wrong square. If a joint is still off, the
+gripper isn't touched, and the arm handles it like a failed move (below), saying which joint is off.
+
+In robot-vs-robot games, if Stockfish's choice needs a square (or the bin) the arm can't reach, the
+arm plays the best of the engine's top 8 moves that it can reach instead.
 
 If the gripper closes on nothing (twice), or a square can't be reached, the arm puts back
 anything it's holding, parks, and the screen tells you what to do by hand ("Please move the

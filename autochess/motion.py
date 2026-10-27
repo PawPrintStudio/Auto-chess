@@ -3,6 +3,8 @@
 Every move is checked before it's sent: inside the joint limits, clear of the mount plate, and,
 for joint moves, never lower than `floor` (a depth below the plate) along the way.
 """
+import time
+
 import numpy as np
 
 from .kinematics import LIMITS, PARK, clear_of_mount, fingertip, ik, joints_xyz, within_limits
@@ -10,6 +12,8 @@ from .kinematics import LIMITS, PARK, clear_of_mount, fingertip, ik, joints_xyz,
 JOINT_SPEED = 0.6       # rad/s for the joint that moves furthest
 LINE_SPEED = 60.0       # mm/s along straight lines
 LINE_STEP = 8.0         # mm between points on a straight line
+ARRIVE_TOL = 0.05       # rad (about 3 degrees): how far a joint may be from where it was sent and still count as there
+ARRIVE_TIMEOUT = 2.0    # s the joints get to settle onto the pose they were sent to
 
 
 class Unsafe(Exception):
@@ -31,6 +35,31 @@ class Mover:
 
     def where(self):
         return fingertip(self.q)
+
+    def arrive(self, tol=None, timeout=None):
+        """Check that the arm is really at the pose it was last sent to, waiting up to `timeout` s for
+        the joints to settle. The controller says a move is done even when a joint stalled short (an
+        elbow against its limit, say), so call this before the gripper closes or lets go: a piece let
+        go from the wrong place falls on the wrong square. Raises Unsafe (the gripper isn't touched)
+        if a joint stays more than `tol` rad off. Afterwards self.q is where the arm really is."""
+        tol = ARRIVE_TOL if tol is None else tol
+        timeout = ARRIVE_TIMEOUT if timeout is None else timeout
+        target = np.array(self.q if self.q is not None else self.refresh())
+        end = time.monotonic() + timeout
+        while True:
+            actual = self.arm.angles()
+            if actual is None:
+                raise Unsafe("no joint angles from the arm: is the arm bringup running?")
+            off = np.array(actual, float) - target
+            if np.max(np.abs(off)) <= tol:
+                self.q = tuple(float(a) for a in actual)
+                return
+            if time.monotonic() >= end:
+                self.q = tuple(float(a) for a in actual)       # later moves (parking) start from where it really is
+                names = ("base", "shoulder", "elbow", "wrist")
+                worst = ", ".join(f"{n} {np.degrees(d):+.1f}°" for n, d in zip(names, off) if abs(d) > tol)
+                raise Unsafe(f"the arm stopped short of where it was sent ({worst} off): the gripper was not moved")
+            time.sleep(0.05)
 
     def joint_move(self, q4, floor=None, seconds=None):
         """Move to q4 with all joints turning together. floor: the arm mustn't go deeper than this

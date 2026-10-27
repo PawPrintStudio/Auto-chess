@@ -75,6 +75,7 @@ class RealArm:
         self.holding, self.held = False, None    # held: (square it came from, piece)
         self.grip_pos = None                      # where the fingers stopped on the held piece
         self.empty_limit = EMPTY_GRIP             # learned in start()
+        self._reach = {}                          # (square, piece) -> can the arm get its fingertips there?
 
     def start(self):
         """Go to the home (park) pose from wherever the arm is now, by the same safe route as
@@ -118,6 +119,25 @@ class RealArm:
                 return
         self.mover.park()
 
+    def can_play(self, board, move):
+        """Can the arm reach every square this move needs (and the bin for a capture)? A rough check, from
+        the inverse kinematics alone: it lets the game pick another move instead of asking for help."""
+        for kind, sq, piece in plan_steps(board, move):
+            if kind == "bin":
+                key = ("bin", None)
+                if key not in self._reach:
+                    self._reach[key] = ik(self.geo.drop) is not None
+            elif kind in ("take", "put"):
+                key = (sq, piece)
+                if key not in self._reach:
+                    self._reach[key] = all(ik(self.geo.square(sq, h)) is not None
+                                           for h in (self.geo.grip[piece], self.geo.travel))
+            else:
+                continue
+            if not self._reach[key]:
+                return False
+        return True
+
     # ---- steps ----
     def _above(self, sq):
         return self.geo.square(sq, self.geo.travel)
@@ -142,7 +162,8 @@ class RealArm:
         self.ros.gripper(self.geo.gripper_open)
         for attempt in range(2):
             self.mover.line_to(self.geo.square(sq, self.geo.grip[piece]))
-            got = self.ros.gripper(GRIPPER_CLOSED, GRIP_EFFORT)
+            self.mover.arrive()                       # really down there? else don't close on thin air
+            got = self.ros.gripper(GRIPPER_CLOSED, self.geo.effort[piece])
             self.log(f"[arm] gripper closed to {got if got is not None else float('nan'):+.4f} on the {NAMES[piece]}"
                      f" ({'holding it' if got is not None and got > self.empty_limit else 'nothing there'})")
             if got is not None and got > self.empty_limit:
@@ -157,6 +178,7 @@ class RealArm:
     def _put(self, sq, piece):
         self.mover.go_to(self._above(sq), floor=self._floor())
         self.mover.line_to(self.geo.square(sq, self.geo.grip[piece] + 2))
+        self.mover.arrive()                           # really down there? else the piece would drop on the wrong square
         self.release()
         self.mover.line_to(self._above(sq))
 
@@ -178,6 +200,7 @@ class RealArm:
         except Unsafe:
             lowered = False          # can't get down to it safely from here: let go above it, it falls in
             self.log("[arm] letting go above the bin instead")
+        self.mover.arrive()
         self.release()
         if lowered:
             self.mover.joint_move(q_up)

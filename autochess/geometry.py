@@ -26,7 +26,7 @@ GRIPPER_OPEN = 0.0      # partly open (about 40 mm between the fingers), so they
 GRIPPER_CLOSED = -0.01
 GRIPPER_FULL_OPEN = 0.019
 RELEASE = 0.008         # letting go: open this much (per finger) wider than where the fingers stopped on the piece
-GRIP_EFFORT = 60.0
+GRIP_EFFORT = 60.0      # how hard the gripper squeezes; each piece type can have its own (try_move --effort)
 EMPTY_GRIP = -0.008     # fingers closed past this: nothing between them (until start() measures it)
 HELD_MARGIN = 0.001     # fingers stopping 1 mm short of an empty close: they're holding a piece
                         # (try_move --held-margin; smaller for pieces barely wider than the closed gripper)
@@ -34,12 +34,14 @@ HELD_MARGIN = 0.001     # fingers stopping 1 mm short of an empty close: they're
 
 class Board:
     def __init__(self, a1, h1, a8, drop, grip=None, travel=TRAVEL, gripper_open=GRIPPER_OPEN,
-                 held_margin=HELD_MARGIN, h8=None):
+                 held_margin=HELD_MARGIN, h8=None, effort=None):
         self.a1, self.h1, self.a8 = (np.array(p, float) for p in (a1, h1, a8))
         self.h8 = np.array(h8, float) if h8 is not None else self.h1 + self.a8 - self.a1
         self.drop = np.array(drop, float)
         self.grip = dict(GRIP)
         self.grip.update({chess.PIECE_SYMBOLS.index(k): float(v) for k, v in (grip or {}).items()})
+        self.effort = {p: GRIP_EFFORT for p in self.grip}
+        self.effort.update({chess.PIECE_SYMBOLS.index(k): float(v) for k, v in (effort or {}).items()})
         self.travel, self.gripper_open, self.held_margin = travel, gripper_open, held_margin
 
     def at(self, u, v):
@@ -87,7 +89,8 @@ class Board:
         data = {"a1": self.a1.tolist(), "h1": self.h1.tolist(), "a8": self.a8.tolist(), "h8": self.h8.tolist(),
                 "drop": self.drop.tolist(), "travel": self.travel, "gripper_open": self.gripper_open,
                 "held_margin": self.held_margin,
-                "grip": {chess.PIECE_SYMBOLS[p]: h for p, h in self.grip.items()}}
+                "grip": {chess.PIECE_SYMBOLS[p]: h for p, h in self.grip.items()},
+                "effort": {chess.PIECE_SYMBOLS[p]: e for p, e in self.effort.items()}}
         path.write_text(json.dumps(data, indent=2))
 
     @classmethod
@@ -97,4 +100,4 @@ class Board:
             raise FileNotFoundError("the board isn't calibrated yet: python3 -m autochess.calibrate")
         d = json.loads(path.read_text())
         return cls(d["a1"], d["h1"], d["a8"], d["drop"], d.get("grip"), d.get("travel", TRAVEL),
-                   d.get("gripper_open", GRIPPER_OPEN), d.get("held_margin", HELD_MARGIN), d.get("h8"))
+                   d.get("gripper_open", GRIPPER_OPEN), d.get("held_margin", HELD_MARGIN), d.get("h8"), d.get("effort"))

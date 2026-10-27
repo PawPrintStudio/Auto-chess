@@ -119,7 +119,9 @@ class Game:
     def _robot_turn(self, side, player):
         self.clock.run(side)
         self._emit("thinking", side=side)
-        move = self.engine.choose(self.board, player.level, max_think=self.clock.left(side) / 30)
+        can_play = getattr(self.arm, "can_play", None)       # an arm that knows what it can reach
+        move = self.engine.choose(self.board, player.level, max_think=self.clock.left(side) / 30,
+                                  playable=(lambda m: can_play(self.board, m)) if can_play else None)
         self.clock.pause()          # the arm's movement doesn't count
         if self.clock.flagged(side):
             self._lose_on_time(side)
