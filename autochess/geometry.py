@@ -45,10 +45,11 @@ class Board:
         self.grip = dict(GRIP)
         self.grip.update({chess.PIECE_SYMBOLS.index(k): float(v) for k, v in (grip or {}).items()})
         # Squares taught one by one (python3 -m autochess.calibrate_squares): the board surface point at the
-        # centre of the square, which replaces the blend of the four corners there. `checked` are the
-        # squares confirmed right (taught, or the blend was fine).
+        # centre of the square. They replace the blend of the four corners there, and pull the squares
+        # around them the same way (see at()). `checked` are the squares taught and confirmed.
         self.squares = {chess.parse_square(k): np.array(v, float) for k, v in (squares or {}).items()}
         self.checked = {chess.parse_square(k) for k in (checked or [])}
+        self._residuals = None
         self.effort = {p: GRIP_EFFORT for p in self.grip}
         self.effort.update({chess.PIECE_SYMBOLS.index(k): float(v) for k, v in (effort or {}).items()})
         self.travel, self.gripper_open, self.held_margin = travel, gripper_open, held_margin
@@ -62,17 +63,49 @@ class Board:
         """The carrying height the current grip heights need."""
         return TALLEST + CLEARANCE + max(self.grip.values())
 
-    def at(self, u, v):
-        """Board surface point at board coordinates (u, v) in squares: 0 = centre of a1, 7 = centre of
-        the h-file / 8th rank. Blended from the four calibrated corners."""
+    def _blend(self, u, v):
         a, b = u / 7, v / 7
         return (1 - a) * (1 - b) * self.a1 + a * (1 - b) * self.h1 + (1 - a) * b * self.a8 + a * b * self.h8
 
+    def at(self, u, v):
+        """Board surface point at board coordinates (u, v) in squares: 0 = centre of a1, 7 = centre of
+        the h-file / 8th rank. Blended from the four calibrated corners, then corrected by the squares
+        taught one by one: exactly right on those squares, and in between by how far off the blend was at
+        the taught squares nearby (closer ones count more)."""
+        base = self._blend(u, v)
+        if not self.squares:
+            return base
+        if self._residuals is None:
+            where = np.array([[chess.square_file(s), chess.square_rank(s)] for s in self.squares], float)
+            off = np.array([p - self._blend(*w) for p, w in zip(self.squares.values(), where)])
+            self._residuals = (where, off)
+        where, off = self._residuals
+        d2 = ((where - [u, v]) ** 2).sum(axis=1)
+        nearest = int(d2.argmin())
+        if d2[nearest] < 1e-9:
+            return base + off[nearest]
+        w = 1.0 / d2
+        return base + (w[:, None] * off).sum(axis=0) / w.sum()
+
+    def set_square(self, sq, point):
+        """Teach the surface point at the centre of square sq."""
+        self.squares[sq] = np.array(point, float)
+        self._residuals = None
+
+    def clear_squares(self):
+        self.squares.clear()
+        self.checked.clear()
+        self._residuals = None
+
+    def shift(self, mm):
+        """The arm moved straight up by mm: the board and the bin are now mm further below it."""
+        for p in (self.a1, self.h1, self.a8, self.h8, self.drop, *self.squares.values()):
+            p[2] += mm
+        self._residuals = None
+
     def square(self, sq, height=0.0):
         """Fingertip position over the centre of square sq, height mm above the board."""
-        taught = self.squares.get(sq)
-        base = taught if taught is not None else self.at(chess.square_file(sq), chess.square_rank(sq))
-        return base - [0.0, 0.0, height]
+        return self.at(chess.square_file(sq), chess.square_rank(sq)) - [0.0, 0.0, height]
 
     def _uv(self, point):
         """Board coordinates (u, v) of the point on the board right under `point`."""

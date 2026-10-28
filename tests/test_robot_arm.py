@@ -399,60 +399,96 @@ def test_visit_stops_above_each_square_at_the_height_and_ends_parked():
     assert "a1: base angle" in describe_corners(geo) and "files run from" in describe_corners(geo)
 
 
-def test_every_square_can_be_checked_and_taught_one_by_one(tmp_path, monkeypatch):
-    from autochess.calibrate_squares import ABOVE, HOVER, snake_order, teach
-    from autochess.motion import Mover
-
-    from autochess.kinematics import PARK
-
-    ros = FakeRos()
-    ros.q = (0.0, *PARK)                                     # the arm starts from its home pose
+def test_taught_squares_correct_the_board_around_them(tmp_path, monkeypatch):
     b = my_board()
-    mover = Mover(ros)
-    mover.refresh()
-    answers = iter("ynys")                                   # e2 right; e4 wrong, then right once taught; a1 skipped
-    seen = []
-
-    def answer(text):
-        sq = chess.parse_square(text.split("centred on ")[1][:2])
-        seen.append(np.linalg.norm(fingertip(ros.q) - b.square(sq, HOVER)))
-        return next(answers)
-
-    taught = b.square(chess.E4) + [8.0, 5.0, 3.0]
-    steered = []
-
-    def steer(mover_, prompt, deepest, board_depth, straight=False):
-        steered.append((prompt, deepest, board_depth))
-        return taught
-
-    saves = []
-    monkeypatch.setattr("autochess.calibrate_squares.lift", lambda *a, **k: None)
-    result = teach(mover, b, [chess.E2, chess.E4, chess.A1], answer=answer, steer=steer, save=lambda: saves.append(1),
-                   log=lambda s: None)
-    assert result == "done"
-    assert len(seen) == 4 and max(seen) < 1                   # every question was asked 15 mm above the square (e4 twice)
-    assert b.checked == {chess.E2, chess.E4} and chess.A1 not in b.checked
-    assert b.squares == {chess.E4: pytest.approx(taught)}     # only the wrong square is replaced
-    assert b.square(chess.E4, 20) == pytest.approx(taught - [0, 0, 20])
-    assert "e4" in steered[0][0] and steered[0][1] == pytest.approx(steered[0][2] + 25)
-    assert len(saves) == 3                                    # e2 confirmed, e4 taught, e4 confirmed
-    assert np.linalg.norm(fingertip(ros.q) - b.square(chess.A1, b.travel)) < 1   # ends lifted to the carrying height
-    # it survives a save and load, and the answers quitting stop it
+    plain = {sq: b.square(sq) for sq in chess.SQUARES}
+    b.set_square(chess.E2, plain[chess.E2] + [0.0, 0.0, 70.0])         # the board is really 70 mm deeper than thought... at e2
+    assert b.square(chess.E2) == pytest.approx(plain[chess.E2] + [0, 0, 70])          # exactly the taught point
+    shifts = {sq: (b.square(sq) - plain[sq])[2] for sq in chess.SQUARES}
+    assert all(s == pytest.approx(70.0) for s in shifts.values())          # one taught square: everywhere shifts alike
+    b.set_square(chess.D7, plain[chess.D7] + [0.0, 0.0, 10.0])         # a second one disagrees: they blend
+    assert b.square(chess.D7)[2] == pytest.approx(plain[chess.D7][2] + 10.0)
+    assert b.square(chess.E2)[2] == pytest.approx(plain[chess.E2][2] + 70.0)
+    near_e2, near_d7 = (b.square(sq)[2] - plain[sq][2] for sq in (chess.F2, chess.D6))
+    assert 40 < near_e2 < 70 and 10 < near_d7 < 40                       # closer to e2 means more like e2
+    tip = b.square(chess.E2, 20)
+    assert b.height_above(tip) == pytest.approx(20.0, abs=0.5)           # the clearance checks use the corrected board
     b.save(tmp_path / "board.json")
     back = Board.load(tmp_path / "board.json")
-    assert back.checked == b.checked and back.squares[chess.E4] == pytest.approx(taught)
-    assert teach(mover, back, [chess.B2], answer=lambda t: "q", save=lambda: None) == "quit"
-    assert sorted(snake_order()) == list(chess.SQUARES) and snake_order()[7] == chess.H1 and snake_order()[8] == chess.H2
-
-
-def test_raising_the_arm_shifts_the_squares_taught_one_by_one_too(tmp_path, monkeypatch):
-    from autochess import calibrate
-
+    assert back.square(chess.F2) == pytest.approx(b.square(chess.F2))
     monkeypatch.setattr("autochess.geometry.BOARD_FILE", tmp_path / "board.json")
-    b = my_board()
-    b.squares[chess.E4] = b.square(chess.E4) + [3.0, 0.0, 2.0]
-    z = b.squares[chess.E4][2]
-    b.save()
+    from autochess import calibrate
     calibrate.shift_saved(50.0)
-    back = Board.load()
-    assert back.squares[chess.E4][2] == pytest.approx(z + 50.0) and back.a1[2] == pytest.approx(H + 50.0)
+    shifted = Board.load()
+    assert shifted.square(chess.E2)[2] == pytest.approx(b.square(chess.E2)[2] + 50.0)
+    assert shifted.square(chess.F2)[2] == pytest.approx(b.square(chess.F2)[2] + 50.0)
+    shifted.clear_squares()
+    assert shifted.square(chess.E2) == pytest.approx(plain[chess.E2] + [0, 0, 50])
+
+
+def test_teaching_by_grabbing_never_goes_down_by_itself_and_learns_the_board_height():
+    from autochess.calibrate_squares import CLEAR_TOP, snake_order, teach
+    from autochess.geometry import PIECE_HEIGHT
+    from autochess.kinematics import PARK
+    from autochess.motion import Mover
+
+    real = my_board()                                         # where the board really is
+    model = my_board()
+    for p in (model.a1, model.h1, model.a8, model.h8, model.drop):
+        p[2] += 70.0                                          # the calibration thinks it is 70 mm deeper
+    start = chess.Board()
+    ros = FakeRos()
+    ros.q = (0.0, *PARK)
+    mover = Mover(ros)
+    mover.refresh()
+    asked, heights, steered, saves = [], [], [], []
+
+    def steer(mover_, prompt, deepest, board_depth, straight=False):
+        sq = squares[len(steered)]
+        steered.append(sq)
+        if len(steered) == 1:
+            assert not ros.points                              # the first square is steered entirely by hand
+        else:
+            heights.append(real.height_above(fingertip(ros.q)))    # where the arm stopped by itself, above the real board
+        return real.square(sq, model.grip[start.piece_type_at(sq)])      # the perfect grab, as the user would show it
+
+    squares = snake_order([chess.A1, chess.B1, chess.C1, chess.H2])
+    assert squares == [chess.A1, chess.B1, chess.C1, chess.H2]
+    result = teach(mover, model, squares, lambda sq: start.piece_type_at(sq), answer=lambda t: "y", steer=steer,
+                   save=lambda: saves.append(1), log=lambda s: None)
+    assert result == "done" and model.checked == set(squares)
+    for sq in squares:                                         # each one is exactly the grab that was shown
+        assert model.square(sq, model.grip[start.piece_type_at(sq)]) == pytest.approx(
+            real.square(sq, model.grip[start.piece_type_at(sq)]), abs=1e-6)
+    # After the first square the arm knew the board height, so it stopped 20 mm over the top of each next piece.
+    for h, sq in zip(heights, squares[1:]):
+        assert h == pytest.approx(PIECE_HEIGHT[start.piece_type_at(sq)] + CLEAR_TOP, abs=1.5)
+    assert real.height_above(fingertip(ros.q)) == pytest.approx(model.travel, abs=1.5)    # ends lifted
+    assert len(saves) >= 2 * len(squares)
+
+
+def test_teaching_can_steer_again_skip_and_stop():
+    from autochess.calibrate_squares import snake_order, teach
+    from autochess.kinematics import PARK
+    from autochess.motion import Mover
+
+    b = my_board()
+    ros = FakeRos()
+    ros.q = (0.0, *PARK)
+    mover = Mover(ros)
+    mover.refresh()
+    start = chess.Board()
+    count = []
+
+    def steer(mover_, prompt, deepest, board_depth, straight=False):
+        count.append(prompt)
+        return None if len(count) == 3 else b.square(chess.E2, b.grip[chess.PAWN]) + [0.0, 0.0, len(count)]
+
+    answers = iter("nys")                                       # e2: steer again, then accept; d2: cancelled while steering
+    result = teach(mover, b, [chess.E2, chess.D2], lambda sq: start.piece_type_at(sq), answer=lambda t: next(answers),
+                   steer=steer, save=lambda: None, log=lambda s: None)
+    assert result == "done" and len(count) == 3 and b.checked == {chess.E2}      # e2 steered twice, d2 cancelled
+    assert teach(mover, b, [chess.G1], lambda sq: chess.KNIGHT, answer=lambda t: "q",
+                 steer=lambda *a, **k: b.square(chess.G1, 28.0), save=lambda: None, log=lambda s: None) == "quit"
+    assert sorted(snake_order(list(chess.SQUARES))) == list(chess.SQUARES)
+    assert snake_order(list(chess.SQUARES))[7] == chess.H1 and snake_order(list(chess.SQUARES))[8] == chess.H2

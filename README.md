@@ -203,20 +203,24 @@ It then shows you e5, in the middle, to check. However it ends (finished,
 `q`, or an error), the arm goes back to its home pose by itself. The result is saved in
 `data/board.json` (not in git: it belongs to this robot).
 
-**Teaching every square (when the four corners aren't enough)**
+**Teaching the squares by grabbing (when the four corners aren't enough)**
 
-If the arm lands off-centre on some squares, teach it each square one by one:
+If the arm lands off-centre or at the wrong height, show it where to grab each piece, with the pieces
+standing in the starting position and the board taped down:
 
 ```bash
-python3 -m autochess.calibrate_squares            # all 64, rank by rank (e2 e4 g1 ... for only some)
+python3 -m autochess.calibrate_squares            # the 32 pieces, rank by rank (e2 g1 ... for only some)
 ```
 
-The arm goes over each square, 15 mm up, and you press `y` (centred), `n` (steer the fingertips onto
-the square's centre, just touching, gripper straight down, then Enter: the arm goes back over it so you
-can check), `s` (skip) or `q` (stop). Everything is saved after each answer, so you can stop and
-carry on later: squares already confirmed are skipped (`--redo` asks about all again, `--clear` forgets
-them). Tape the board down first. Taught squares replace the four-corner blend, they are shifted along
-by `calibrate --raised`, and a new four-corner calibration forgets them.
+For each piece you steer the fingertips to the perfect grab: centred on it, gripper straight down, a
+little above the board and not touching it. The arm never goes down by itself. You steer the first square
+all the way (until it has seen one, it doesn't know how deep the board is). After that it goes over each
+next square by itself, stops 20 mm above the top of the piece, and you steer the last bit. Then it lifts
+and comes back down to the spot you showed so you can check it: `y` (perfect), `n` (steer again), `s`
+(skip), `q` (stop). Everything is saved after each answer, so you can stop and carry on later: squares
+already confirmed are skipped (`--redo` asks about all again, `--clear` forgets them). A taught square is
+exactly right and the squares around it follow it, so the empty ones in the middle come out right too.
+They are shifted along by `calibrate --raised`, and a new four-corner calibration forgets them.
 
 **Fitting the 40 mm fingertip extensions** (or any other change to the fingers)
 
