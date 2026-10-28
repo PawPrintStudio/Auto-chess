@@ -5,6 +5,7 @@
   python3 -m autochess.try_move g1f3 --grip n=30  try the knight gripped 30 mm above the board
   python3 -m autochess.try_move e2e4 --held-margin 0.3   count 0.3 mm short of fully closed as holding
   python3 -m autochess.try_move d2d4 d7d5 d1d3 --effort q=80   squeeze the queen harder (60 for every piece by default)
+  python3 -m autochess.try_move e2e4 --hover 30   stop 30 mm above where it would grip (check the calibration safely)
   ... --save                                      keep the --grip / --effort / --held-margin settings in data/board.json
 
 Set up the pieces in the starting position first. Moves must be legal from there.
@@ -28,9 +29,14 @@ def main():
                     help="how hard to squeeze a piece (p n b r q k), e.g. --effort b=80; default 60")
     ap.add_argument("--held-margin", type=float, metavar="MM",
                     help="how far short of an empty close (mm, per finger) counts as holding a piece; default 1")
+    ap.add_argument("--hover", type=float, default=0.0, metavar="MM",
+                    help="grip and let go this many mm higher than usual, so nothing touches the board: it closes on "
+                         "thin air, gives up and asks for help, which is fine. For checking the calibration; can't be saved")
     ap.add_argument("--save", action="store_true", help="save the --grip heights, --effort and --held-margin")
     args = ap.parse_args()
 
+    if args.hover and args.save:
+        ap.error("--hover is only for checking: it can't be combined with --save")
     geo = Board.load()
     for g in args.grip:
         sym, mm = g.split("=")
@@ -40,6 +46,8 @@ def main():
         geo.effort[chess.PIECE_SYMBOLS.index(sym.lower())] = float(n)
     if args.held_margin is not None:
         geo.held_margin = args.held_margin / 1000.0
+    for p in geo.grip:
+        geo.grip[p] += args.hover
     board = chess.Board()
     moves = []
     for uci in args.moves:
