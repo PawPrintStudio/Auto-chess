@@ -129,9 +129,15 @@ MAX_TILT = 5.0            # degrees: touch the squares with the gripper about st
 CARRY_WANTED = 145.0      # a piece held 42 mm up then clears the 80 mm king by 20 mm
 
 
-def carry_height(board, best=CARRY_WANTED, lowest_ok=90.0):
+def carry_wanted(board):
+    """How high to carry: CARRY_WANTED, or higher if the pieces are gripped high up (they hang below the
+    fingertips and must still clear the 80 mm king)."""
+    return max(CARRY_WANTED, board.needed_carry() + 5.0)
+
+
+def carry_height(board, best=None, lowest_ok=90.0):
     """The highest fingertip height (up to `best`) at which the arm reaches every square."""
-    h = best
+    h = carry_wanted(board) if best is None else best
     while h >= lowest_ok:
         if all(ik(board.square(s, h)) is not None for s in chess.SQUARES):
             return h
@@ -277,10 +283,14 @@ def describe_board(b):
     print(f"\nSquares: {fs:.1f} mm along the ranks, {rs:.1f} mm along the files.")
     b.travel = carry_height(b)
     print(f"Carrying height: {b.travel:.0f} mm above the board (the highest that reaches every square).")
-    if b.travel < CARRY_WANTED:
-        print(f"  That's below {CARRY_WANTED:.0f} mm: carried pieces may not clear the tall ones. The arm hangs "
-              f"too close to the board: raise it on the frame (each 1 cm up adds about 1 cm here, up to "
-              f"~{CARRY_WANTED:.0f} mm).")
+    if b.travel < b.needed_carry():
+        print(f"  That's below the {b.needed_carry():.0f} mm the grip heights need (the highest grip, "
+              f"{max(b.grip.values()):.0f} mm, hangs the piece that far below the fingertips): carried pieces "
+              f"wouldn't clear the 80 mm king. Raise the arm on the frame (each 1 cm up adds about 1 cm here), "
+              f"or grip lower: python3 -m autochess.grips --top 14")
+    elif b.travel < CARRY_WANTED:
+        print(f"  That's below {CARRY_WANTED:.0f} mm: it clears the king with these grip heights, but with little "
+              f"margin. Raising the arm on the frame adds about 1 cm here for each 1 cm.")
 
 
 def check_e5(mover, b):

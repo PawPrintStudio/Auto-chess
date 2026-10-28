@@ -22,6 +22,10 @@ TRAVEL = 145.0          # fingertip height above the board while moving between 
 # Tune with: python3 -m autochess.try_move
 GRIP = {chess.PAWN: 22.0, chess.ROOK: 25.0, chess.KNIGHT: 28.0, chess.BISHOP: 32.0,
         chess.QUEEN: 38.0, chess.KING: 42.0}
+# How tall each piece is, mm (measured on the real set). The fingertips close this far below the top
+# with: python3 -m autochess.grips --top MM
+PIECE_HEIGHT = {chess.PAWN: 40.0, chess.ROOK: 43.0, chess.KNIGHT: 51.0, chess.BISHOP: 60.0,
+                chess.QUEEN: 72.0, chess.KING: 80.0}
 GRIPPER_OPEN = 0.0      # partly open (about 40 mm between the fingers), so they miss the neighbours
 GRIPPER_CLOSED = -0.01
 GRIPPER_FULL_OPEN = 0.019
@@ -43,6 +47,15 @@ class Board:
         self.effort = {p: GRIP_EFFORT for p in self.grip}
         self.effort.update({chess.PIECE_SYMBOLS.index(k): float(v) for k, v in (effort or {}).items()})
         self.travel, self.gripper_open, self.held_margin = travel, gripper_open, held_margin
+
+    def max_grip(self):
+        """The highest grip height the carrying height allows: a held piece hangs that far below the
+        fingertips, and its bottom must stay above the tallest piece plus the margin."""
+        return self.travel - TALLEST - CLEARANCE
+
+    def needed_carry(self):
+        """The carrying height the current grip heights need."""
+        return TALLEST + CLEARANCE + max(self.grip.values())
 
     def at(self, u, v):
         """Board surface point at board coordinates (u, v) in squares: 0 = centre of a1, 7 = centre of

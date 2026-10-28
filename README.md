@@ -237,6 +237,15 @@ nothing to learn where empty fingers end up; later, fingers that stop at least 1
 that are holding a piece. Each close prints the finger position, e.g.
 `[arm] gripper closed to -0.0052 on the pawn (holding it)`.
 
+**Gripping near the top of the pieces.** With the 40 mm extensions the fingertips can close high up on a
+piece, so the arm doesn't have to go far down. `python3 -m autochess.grips` shows the grip heights,
+and `python3 -m autochess.grips --top 14` proposes closing the fingertips 14 mm below each piece's
+top (heights from `PIECE_HEIGHT` in `geometry.py`: pawn 40, rook 43, knight 51, bishop 60, queen 72,
+king 80 mm); add `--save` to keep it. A piece gripped high hangs low below the fingertips when carried
+(its bottom must stay 15 mm above the 80 mm king), so the carrying height limits the grip: the tall
+pieces are lowered to fit, and each 1 cm the arm is raised on the frame allows about 1 cm higher grips.
+Check with `try_move e2e4 --hover 30` before the first real grab.
+
 Each piece type also has its own squeeze (default 60 for all). If a tall piece (bishop, queen,
 king) slips while being carried, give it more: `python3 -m autochess.try_move d2d4 d7d5 d1d3 --effort q=80 --save`.
 

@@ -354,3 +354,27 @@ def test_engine_falls_back_to_a_move_the_arm_can_play():
     assert e.choose(board, "L", playable=lambda m: m == first) == first       # playable: kept
     assert e.choose(board, "L", playable=lambda m: m == third) == third       # skips the unplayable ones
     assert e.choose(board, "L", playable=lambda m: False) == first            # none playable: the arm will ask
+
+
+def test_grips_follow_the_pieces_heights_but_never_exceed_what_carrying_allows():
+    from autochess.grips import plan_grips
+
+    b = my_board()
+    b.travel = 170.0                                   # room to carry a piece hanging 75 mm below the fingertips
+    grips = {p: g for p, (g, _) in plan_grips(b, 14).items()}
+    assert grips == {chess.PAWN: 26, chess.ROOK: 29, chess.KNIGHT: 37, chess.BISHOP: 46, chess.QUEEN: 58, chess.KING: 66}
+    b.travel = 136.0                                   # only 41 mm may hang below: the tall pieces are lowered to fit
+    grips = {p: g for p, (g, _) in plan_grips(b, 14).items()}
+    assert grips[chess.PAWN] == 26 and grips[chess.KNIGHT] == 37
+    assert grips[chess.BISHOP] == grips[chess.QUEEN] == grips[chess.KING] == 41
+
+
+def test_carrying_height_follows_the_highest_grip():
+    from autochess.calibrate import carry_height, carry_wanted
+
+    b = my_board()
+    assert b.needed_carry() == 80 + 15 + b.grip[chess.KING]
+    assert carry_wanted(b) == 145.0                    # stock grip heights: the old target
+    b.grip[chess.KING] = 66.0
+    assert b.needed_carry() == 161 and carry_wanted(b) == 166.0
+    assert carry_height(b) == pytest.approx(166.0)      # the test board (arm 480 mm up) reaches every square there
