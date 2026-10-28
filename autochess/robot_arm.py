@@ -160,6 +160,8 @@ class RealArm:
     def _take(self, sq, piece):
         self.mover.go_to(self._above(sq), floor=self._floor())
         self.ros.gripper(self.geo.gripper_open)
+        self.log(f"[arm] taking the {NAMES[piece]} on {chess.square_name(sq)}: fingertips down to "
+                 f"{self.geo.grip[piece]:.0f} mm above the board")
         for attempt in range(2):
             self.mover.line_to(self.geo.square(sq, self.geo.grip[piece]))
             self.mover.arrive()                       # really down there? else don't close on thin air

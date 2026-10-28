@@ -378,3 +378,22 @@ def test_carrying_height_follows_the_highest_grip():
     b.grip[chess.KING] = 66.0
     assert b.needed_carry() == 161 and carry_wanted(b) == 166.0
     assert carry_height(b) == pytest.approx(166.0)      # the test board (arm 480 mm up) reaches every square there
+
+
+def test_visit_stops_above_each_square_at_the_height_and_ends_parked():
+    from autochess.visit import describe_corners, visit
+
+    ros = FakeRos()
+    geo = my_board()
+    arm = RealArm(ros, geo, log=lambda s: None)
+    stops, logs = [], []
+
+    def wait(text):
+        stops.append((H - fingertip(ros.q)[2], text))
+
+    visit(arm, [chess.E2, chess.A1, chess.H8], 40.0, wait=wait, log=logs.append)
+    assert [round(h) for h, _ in stops] == [40, 40, 40]
+    assert "e2" in stops[0][1] and "a1" in stops[1][1]
+    assert np.allclose(fingertip(ros.q)[:2], (0, 0), atol=200) and not arm.holding
+    assert len(logs) == 3 and "over e2" in logs[0]
+    assert "a1: base angle" in describe_corners(geo) and "files run from" in describe_corners(geo)
