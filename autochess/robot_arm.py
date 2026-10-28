@@ -16,6 +16,24 @@ NAMES = {chess.PAWN: "pawn", chess.KNIGHT: "knight", chess.BISHOP: "bishop", che
          chess.QUEEN: "queen", chess.KING: "king"}
 
 
+def clearance_floor(geo, held_grip=0.0, body=None):
+    """A function of the joint angles saying whether a pose is high enough over the board: nothing may hit
+    the pieces standing on it (up to the 80 mm king): the elbow and wrist stay above the king plus a margin,
+    and the fingertips also above whatever hangs below them (`held_grip`: the held piece's grip height).
+    Measured from the board surface right under each part, so the board needn't be level. `body`: use this
+    clearance instead of the king plus the margin (for an empty board)."""
+    body = TALLEST + CLEARANCE if body is None else body
+    tip = body + held_grip
+
+    def clear(point, least):         # only over the board (and just past its edge) are there pieces
+        return not geo.over_board(point) or geo.height_above(point) >= least
+
+    def high_enough(q4):
+        elbow, wrist, fingers = joint_points(q4)
+        return clear(elbow, body) and clear(wrist, body) and clear(fingers, tip)
+    return high_enough
+
+
 class Missed(Exception):
     """The gripper closed on nothing."""
 
@@ -143,19 +161,8 @@ class RealArm:
         return self.geo.square(sq, self.geo.travel)
 
     def _floor(self):
-        """Over the board, nothing may hit the pieces standing on it (up to the 80 mm king): the elbow
-        and wrist stay above the king plus a margin, and the fingertips also above whatever hangs
-        below them (the held piece's grip height). The board needn't be level."""
-        body = TALLEST + CLEARANCE
-        tip = body + (self.geo.grip[self.held[1]] if self.holding and self.held else 0.0)
-
-        def clear(point, least):         # only over the board (and just past its edge) are there pieces
-            return not self.geo.over_board(point) or self.geo.height_above(point) >= least
-
-        def high_enough(q4):
-            elbow, wrist, fingers = joint_points(q4)
-            return clear(elbow, body) and clear(wrist, body) and clear(fingers, tip)
-        return high_enough
+        """The clearance over the pieces on the board, with the held piece hanging below the fingertips."""
+        return clearance_floor(self.geo, self.geo.grip[self.held[1]] if self.holding and self.held else 0.0)
 
     def _take(self, sq, piece):
         self.mover.go_to(self._above(sq), floor=self._floor())

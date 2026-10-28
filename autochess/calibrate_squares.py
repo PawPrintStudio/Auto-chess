@@ -30,9 +30,11 @@ from .calibrate import go_home, jog, lift, read_key
 from .geometry import GRIPPER_CLOSED, Board
 from .motion import Mover, Unsafe
 from .park import follow, plan
+from .robot_arm import clearance_floor
 
 HOVER = 15.0            # mm above the board for the check
-ABOVE = 60.0            # mm above the board while moving between squares
+ABOVE = 60.0            # mm above the board when lifting after steering onto a square
+EMPTY_CLEARANCE = 40.0  # mm: nothing is on the board, so the arm only has to stay this far above its surface
 LOWEST_ALLOWED = 25.0   # mm: while steering, nothing may go deeper than this below where the board is thought to be
 
 
@@ -56,15 +58,22 @@ def ask_key(question, keys="ynsq"):
             return k
 
 
-def go_over(mover, b, sq, height=HOVER):
-    """Over square sq at `height` mm: up first if the fingertips are low, then across, then straight down."""
+def rise(mover, b):
+    """Straight up to the carrying height, if the fingertips are lower than that."""
     try:
         here = mover.where()
-        if b.height_above(here) < ABOVE - 1:
-            mover.line_to(here - [0.0, 0.0, ABOVE - b.height_above(here)])
+        up = b.travel - b.height_above(here)
+        if up > 1.0:
+            mover.line_to(here - [0.0, 0.0, up])
     except Unsafe:
         pass                                       # go_to's own checks decide what is possible from here
-    mover.go_to(b.square(sq, ABOVE), floor=b.floor(ABOVE - 20))
+
+
+def go_over(mover, b, sq, height=HOVER):
+    """Over square sq at `height` mm: straight up to the carrying height, across at that height (as when
+    playing, clear of any piece), then straight down."""
+    rise(mover, b)
+    mover.go_to(b.square(sq, b.travel), floor=clearance_floor(b, body=EMPTY_CLEARANCE))
     mover.line_to(b.square(sq, height))
     mover.arrive()
 
@@ -80,6 +89,7 @@ def teach(mover, b, squares, answer=ask_key, steer=jog, save=None, log=print):
             a = answer(f"[{n}/{len(squares)}] Are the fingertips centred on {name}, about {HOVER:.0f} mm up?  "
                        f"y = yes, n = no, s = skip, q = quit: ")
             if a == "q":
+                rise(mover, b)
                 return "quit"
             if a == "s":
                 break
@@ -97,10 +107,7 @@ def teach(mover, b, squares, answer=ask_key, steer=jog, save=None, log=print):
                 save()
                 log(f"    {name} saved. Going back over it to check.")
                 lift(mover, p, up=ABOVE)
-        try:
-            mover.line_to(b.square(sq, ABOVE))
-        except Unsafe:
-            pass
+    rise(mover, b)
     return "done"
 
 
@@ -131,6 +138,7 @@ def main():
     from .ros_arm import RosArm
     arm = RosArm()
     mover = Mover(arm, joint_speed=0.4, line_speed=40.0)
+    started = False
     try:
         q = mover.refresh()
         try:
@@ -139,6 +147,7 @@ def main():
             sys.exit(f"Not moving: {e}")
         input("Clear the pieces off the board and tape it down. Keep a hand near the 12 V switch.\n"
               "Press Enter to park the arm and start... ")
+        started = True
         if not follow(arm, moves):
             sys.exit("The arm didn't finish going to its home pose.")
         mover.refresh()
@@ -151,7 +160,8 @@ def main():
     except KeyboardInterrupt:
         print("\nStopped; everything so far is saved.")
     finally:
-        go_home(arm)
+        if started:
+            go_home(arm)
         arm.close()
 
 

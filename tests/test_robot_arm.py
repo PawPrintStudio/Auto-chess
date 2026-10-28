@@ -403,11 +403,13 @@ def test_every_square_can_be_checked_and_taught_one_by_one(tmp_path, monkeypatch
     from autochess.calibrate_squares import ABOVE, HOVER, snake_order, teach
     from autochess.motion import Mover
 
+    from autochess.kinematics import PARK
+
     ros = FakeRos()
+    ros.q = (0.0, *PARK)                                     # the arm starts from its home pose
     b = my_board()
     mover = Mover(ros)
     mover.refresh()
-    mover.q = (0.0, *HANGING)
     answers = iter("ynys")                                   # e2 right; e4 wrong, then right once taught; a1 skipped
     seen = []
 
@@ -434,7 +436,7 @@ def test_every_square_can_be_checked_and_taught_one_by_one(tmp_path, monkeypatch
     assert b.square(chess.E4, 20) == pytest.approx(taught - [0, 0, 20])
     assert "e4" in steered[0][0] and steered[0][1] == pytest.approx(steered[0][2] + 25)
     assert len(saves) == 3                                    # e2 confirmed, e4 taught, e4 confirmed
-    assert np.linalg.norm(fingertip(ros.q) - b.square(chess.A1, ABOVE)) < 1   # ends lifted, ready for the next square
+    assert np.linalg.norm(fingertip(ros.q) - b.square(chess.A1, b.travel)) < 1   # ends lifted to the carrying height
     # it survives a save and load, and the answers quitting stop it
     b.save(tmp_path / "board.json")
     back = Board.load(tmp_path / "board.json")
