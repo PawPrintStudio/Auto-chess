@@ -269,7 +269,7 @@ def keep_grip_settings(b):
 def shift_saved(mm):
     """The arm moved straight up by mm: the board and the bin are now mm further below it."""
     b = Board.load()
-    for p in (b.a1, b.h1, b.a8, b.h8, b.drop):
+    for p in (b.a1, b.h1, b.a8, b.h8, b.drop, *b.squares.values()):
         p[2] += mm
     print(f"Shifted the saved calibration: the board is now {mm:+.0f} mm further below the arm.")
     describe_board(b)

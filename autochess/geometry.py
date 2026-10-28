@@ -38,12 +38,17 @@ HELD_MARGIN = 0.001     # fingers stopping 1 mm short of an empty close: they're
 
 class Board:
     def __init__(self, a1, h1, a8, drop, grip=None, travel=TRAVEL, gripper_open=GRIPPER_OPEN,
-                 held_margin=HELD_MARGIN, h8=None, effort=None):
+                 held_margin=HELD_MARGIN, h8=None, effort=None, squares=None, checked=None):
         self.a1, self.h1, self.a8 = (np.array(p, float) for p in (a1, h1, a8))
         self.h8 = np.array(h8, float) if h8 is not None else self.h1 + self.a8 - self.a1
         self.drop = np.array(drop, float)
         self.grip = dict(GRIP)
         self.grip.update({chess.PIECE_SYMBOLS.index(k): float(v) for k, v in (grip or {}).items()})
+        # Squares taught one by one (python3 -m autochess.calibrate_squares): the board surface point at the
+        # centre of the square, which replaces the blend of the four corners there. `checked` are the
+        # squares confirmed right (taught, or the blend was fine).
+        self.squares = {chess.parse_square(k): np.array(v, float) for k, v in (squares or {}).items()}
+        self.checked = {chess.parse_square(k) for k in (checked or [])}
         self.effort = {p: GRIP_EFFORT for p in self.grip}
         self.effort.update({chess.PIECE_SYMBOLS.index(k): float(v) for k, v in (effort or {}).items()})
         self.travel, self.gripper_open, self.held_margin = travel, gripper_open, held_margin
@@ -65,7 +70,9 @@ class Board:
 
     def square(self, sq, height=0.0):
         """Fingertip position over the centre of square sq, height mm above the board."""
-        return self.at(chess.square_file(sq), chess.square_rank(sq)) - [0.0, 0.0, height]
+        taught = self.squares.get(sq)
+        base = taught if taught is not None else self.at(chess.square_file(sq), chess.square_rank(sq))
+        return base - [0.0, 0.0, height]
 
     def _uv(self, point):
         """Board coordinates (u, v) of the point on the board right under `point`."""
@@ -103,7 +110,9 @@ class Board:
                 "drop": self.drop.tolist(), "travel": self.travel, "gripper_open": self.gripper_open,
                 "held_margin": self.held_margin,
                 "grip": {chess.PIECE_SYMBOLS[p]: h for p, h in self.grip.items()},
-                "effort": {chess.PIECE_SYMBOLS[p]: e for p, e in self.effort.items()}}
+                "effort": {chess.PIECE_SYMBOLS[p]: e for p, e in self.effort.items()},
+                "squares": {chess.square_name(s): p.tolist() for s, p in sorted(self.squares.items())},
+                "checked": sorted(chess.square_name(s) for s in self.checked)}
         path.write_text(json.dumps(data, indent=2))
 
     @classmethod
@@ -113,4 +122,5 @@ class Board:
             raise FileNotFoundError("the board isn't calibrated yet: python3 -m autochess.calibrate")
         d = json.loads(path.read_text())
         return cls(d["a1"], d["h1"], d["a8"], d["drop"], d.get("grip"), d.get("travel", TRAVEL),
-                   d.get("gripper_open", GRIPPER_OPEN), d.get("held_margin", HELD_MARGIN), d.get("h8"), d.get("effort"))
+                   d.get("gripper_open", GRIPPER_OPEN), d.get("held_margin", HELD_MARGIN), d.get("h8"), d.get("effort"),
+                   d.get("squares"), d.get("checked"))

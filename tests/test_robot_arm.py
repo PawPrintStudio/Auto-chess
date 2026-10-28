@@ -397,3 +397,60 @@ def test_visit_stops_above_each_square_at_the_height_and_ends_parked():
     assert np.allclose(fingertip(ros.q)[:2], (0, 0), atol=200) and not arm.holding
     assert len(logs) == 3 and "over e2" in logs[0]
     assert "a1: base angle" in describe_corners(geo) and "files run from" in describe_corners(geo)
+
+
+def test_every_square_can_be_checked_and_taught_one_by_one(tmp_path, monkeypatch):
+    from autochess.calibrate_squares import ABOVE, HOVER, snake_order, teach
+    from autochess.motion import Mover
+
+    ros = FakeRos()
+    b = my_board()
+    mover = Mover(ros)
+    mover.refresh()
+    mover.q = (0.0, *HANGING)
+    answers = iter("ynys")                                   # e2 right; e4 wrong, then right once taught; a1 skipped
+    seen = []
+
+    def answer(text):
+        sq = chess.parse_square(text.split("centred on ")[1][:2])
+        seen.append(np.linalg.norm(fingertip(ros.q) - b.square(sq, HOVER)))
+        return next(answers)
+
+    taught = b.square(chess.E4) + [8.0, 5.0, 3.0]
+    steered = []
+
+    def steer(mover_, prompt, deepest, board_depth, straight=False):
+        steered.append((prompt, deepest, board_depth))
+        return taught
+
+    saves = []
+    monkeypatch.setattr("autochess.calibrate_squares.lift", lambda *a, **k: None)
+    result = teach(mover, b, [chess.E2, chess.E4, chess.A1], answer=answer, steer=steer, save=lambda: saves.append(1),
+                   log=lambda s: None)
+    assert result == "done"
+    assert len(seen) == 4 and max(seen) < 1                   # every question was asked 15 mm above the square (e4 twice)
+    assert b.checked == {chess.E2, chess.E4} and chess.A1 not in b.checked
+    assert b.squares == {chess.E4: pytest.approx(taught)}     # only the wrong square is replaced
+    assert b.square(chess.E4, 20) == pytest.approx(taught - [0, 0, 20])
+    assert "e4" in steered[0][0] and steered[0][1] == pytest.approx(steered[0][2] + 25)
+    assert len(saves) == 3                                    # e2 confirmed, e4 taught, e4 confirmed
+    assert np.linalg.norm(fingertip(ros.q) - b.square(chess.A1, ABOVE)) < 1   # ends lifted, ready for the next square
+    # it survives a save and load, and the answers quitting stop it
+    b.save(tmp_path / "board.json")
+    back = Board.load(tmp_path / "board.json")
+    assert back.checked == b.checked and back.squares[chess.E4] == pytest.approx(taught)
+    assert teach(mover, back, [chess.B2], answer=lambda t: "q", save=lambda: None) == "quit"
+    assert sorted(snake_order()) == list(chess.SQUARES) and snake_order()[7] == chess.H1 and snake_order()[8] == chess.H2
+
+
+def test_raising_the_arm_shifts_the_squares_taught_one_by_one_too(tmp_path, monkeypatch):
+    from autochess import calibrate
+
+    monkeypatch.setattr("autochess.geometry.BOARD_FILE", tmp_path / "board.json")
+    b = my_board()
+    b.squares[chess.E4] = b.square(chess.E4) + [3.0, 0.0, 2.0]
+    z = b.squares[chess.E4][2]
+    b.save()
+    calibrate.shift_saved(50.0)
+    back = Board.load()
+    assert back.squares[chess.E4][2] == pytest.approx(z + 50.0) and back.a1[2] == pytest.approx(H + 50.0)
