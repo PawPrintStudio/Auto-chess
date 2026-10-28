@@ -6,7 +6,7 @@ from autochess.geometry import GRIPPER_CLOSED, Board
 from autochess.kinematics import HANGING, fingertip, ik
 from autochess.robot_arm import RealArm, describe, plan_steps
 
-H, SQ = 430.0, 38.0
+H, SQ = 480.0, 38.0                # the arm hangs 480 mm above the board: 430 + 50 for the 40 mm fingertip extensions
 HALF = 3.5 * SQ
 
 
@@ -195,10 +195,11 @@ def test_calibration_saves_and_loads(tmp_path):
 
 @pytest.mark.parametrize("drop", [(-284.26, 3.61, 328.95), (-215.0, -39.0, 330.0)])   # the real bin; a closer one
 def test_tilted_low_board_like_the_real_one(drop):
-    # The real calibration: the board ~39-40 cm below the plate, the a8 side 15 mm lower, 42 mm squares,
-    # and the grip settings tuned on the real pieces.
-    b = Board([145.95, -170.75, 391.12], [-148.63, -186.99, 388.08], [131.64, 125.02, 405.43], drop,
-              travel=125.0, grip={"p": 8, "r": 11, "n": 14, "b": 18, "q": 24, "k": 28})
+    # The real calibration (made with the stock fingers): the board ~39-40 cm below the plate, the a8 side
+    # 15 mm lower, 42 mm squares, and the grip settings tuned on the real pieces. The 40 mm fingertip
+    # extensions need the arm raised 5 cm: everything 50 mm further below it (calibrate --raised 50).
+    b = Board([145.95, -170.75, 441.12], [-148.63, -186.99, 438.08], [131.64, 125.02, 455.43],
+              (drop[0], drop[1], drop[2] + 50), travel=125.0, grip={"p": 8, "r": 11, "n": 14, "b": 18, "q": 24, "k": 28})
     assert b.height_above(b.square(chess.E7, 30)) == pytest.approx(30)
     assert b.over_board(b.square(chess.H8)) and not b.over_board(b.drop)
     arm = RealArm(FakeRos(), b, log=lambda s: None)

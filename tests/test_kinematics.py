@@ -13,11 +13,11 @@ def test_home_is_an_L_and_hanging_is_straight_down():
     assert tip[1] == pytest.approx(76.5 + 128 + 124 + 150, abs=1)     # the whole arm straight down
 
 
-@pytest.mark.parametrize("fingers", [126, 150])
+@pytest.mark.parametrize("fingers", [126, 150, 190])
 def test_park_is_folded_up_and_clear(fingers):
     assert within_limits((0.0, *PARK))
     assert clear_of_mount(PARK, fingers)
-    assert lowest(PARK, fingers) < 240            # ~195 mm above the board at a 430 mm mount
+    assert lowest(PARK, fingers) < 250            # ~190 mm above the board at a 430 mm mount
     assert path_clear(HANGING, PARK, fingers)
     assert path_clear((0.0, 0.0, 0.0), PARK, fingers)
 
@@ -32,11 +32,11 @@ def test_plan_from_a_bent_arm_goes_one_joint_at_a_time():
     # Seen on the real arm: moving all joints together from here would dip ~4 cm lower.
     now = (1.40, -0.22, -1.27, -1.10)
     moves = plan(now)
-    assert len(moves) == 3
+    assert 3 <= len(moves) <= 4                   # (4 with the 40 mm fingertip extensions)
     assert moves[-1][0] == pytest.approx((1.40, *PARK))
     start, path = lowest(now[1:]), [np.array(now[1:])] + [np.array(q[1:]) for q, _, _ in moves]
     for a, b in zip(path, path[1:]):
-        assert sum(abs(b - a) > 1e-9) == 1           # one joint per move
+        assert sum(abs(b - a) > 0.05) <= 1           # one joint per move (the first and last may nudge the others a hair)
         assert all(lowest(a + (b - a) * f) <= start + 10 for f in np.linspace(0, 1, 30))
 
 

@@ -11,7 +11,7 @@ import numpy as np
 SHOULDER = 76.5                       # shoulder joint below the plate
 UPPER = np.array([24.0, 128.0])       # shoulder -> elbow at 0
 FOREARM = np.array([124.0, 0.0])      # elbow -> wrist at 0
-FINGERS = 150.0                       # wrist -> fingertips; the measured arm (480 mm) suggests ~150, not ROBOTIS's 126
+FINGERS = 190.0                       # wrist -> fingertips: the stock fingers measured ~150 (ROBOTIS says 126), plus the 40 mm printed extensions
 GRIPPER_HALF_WIDTH = 35.0             # the gripper body sticks out this far each side of the wrist-fingertip line
 
 JOINTS = ["joint1", "joint2", "joint3", "joint4"]
@@ -21,10 +21,12 @@ JOINTS = ["joint1", "joint2", "joint3", "joint4"]
 # way (the arm does that by itself, at a safe height). Its cables need slack for a full turn.
 LIMITS = [(-3.13, 3.13), (-1.5, 1.5), (-1.5, 1.4), (-1.7, 1.9)]
 
-# Folded up under the beam, clear of the plate and of the pieces. Lowest point ~236 mm below the
-# plate (~195 mm above the board at a 430 mm mount, well over the 80 mm king); sticks out ~115 mm
-# from the axis; fingertips ~100 mm below the plate.
-PARK = (-1.24, 0.63, 1.42)            # shoulder, elbow, wrist; the base keeps its current angle
+# Folded up under the beam, clear of the plate and of the pieces. Lowest point ~239 mm below the
+# plate (~190 mm above the board at a 430 mm mount, well over the 80 mm king); sticks out ~140 mm
+# from the axis; fingertips ~117 mm below the plate. Stays clear of the plate for fingers up to
+# ~205 mm. (With the stock 150 mm fingers it was (-1.24, 0.63, 1.42); the 40 mm longer fingertips
+# would touch the plate there, so they need a tighter fold.)
+PARK = (-1.35, 0.65, 1.20)            # shoulder, elbow, wrist; the base keeps its current angle
 
 HANGING = (0.0, -1.57, 0.0)          # limp, straight down (shoulder, elbow, wrist)
 START_SLACK = 0.12                    # how far past a limit a limp arm may start (elbow -1.57 vs -1.5)
@@ -95,6 +97,8 @@ def path_clear(q_from, q_to, fingers=FINGERS, steps=40):
 
 DOWN = -np.pi / 2                     # gripper pitch (q2+q3+q4) pointing straight down at the board
 MAX_TILT = np.radians(30)
+TILT_STEPS = 61                      # tilts tried between -MAX_TILT and +MAX_TILT (1 degree apart); coarser steps
+                                     # made the answer jump along a straight line near the edge of the arm's reach
 ELBOW_ABOVE_TIP = 20.0               # the elbow stays at least this far above the fingertips
 _UPPER_LEN = float(np.hypot(*UPPER))
 _UPPER_ANGLE = float(np.arctan2(-UPPER[1], UPPER[0]))   # the upper arm's direction at q2 = 0
@@ -144,7 +148,7 @@ def ik(point, near=None, fingers=FINGERS, max_tilt=MAX_TILT, smooth=False):
     yaw = float(np.arctan2(Y, X)) if r > 1e-6 else (near[0] if near is not None else 0.0)
     reaches = [(yaw, r), (yaw - np.pi if yaw > 0 else yaw + np.pi, -r)]   # facing it, or leaning back over
     best = None
-    for tilt in sorted(np.linspace(-max_tilt, max_tilt, 25), key=abs):
+    for tilt in sorted(np.linspace(-max_tilt, max_tilt, TILT_STEPS), key=abs):
         for base, rr in reaches:
             if not LIMITS[0][0] <= base <= LIMITS[0][1]:
                 continue

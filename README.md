@@ -26,7 +26,8 @@ arm coordinates, safety rules) is written down in [docs/robo_handoff.md](docs/ro
 | Part | Details |
 |---|---|
 | Arm | OpenMANIPULATOR-X, 5 DYNAMIXEL XM430-W350-T servos (IDs 11–15), 12 V |
-| Mount | upside down from an aluminium-extrusion frame: the bottom of the base plate **430 mm** (420–440) above the top of the board, the base axis within about 2 cm of the board centre |
+| Fingertips | 3D-printed extensions, **40 mm** longer than the stock fingers, so the fingertips reach between the pieces without touching their neighbours. The code uses 190 mm from the wrist to the fingertips (`FINGERS` in `autochess/kinematics.py`; the stock fingers were ~150) |
+| Mount | upside down from an aluminium-extrusion frame: the bottom of the base plate about **480 mm** above the top of the board (430 mm with the stock fingers; the 40 mm longer fingertips need the arm about 5 cm higher to carry pieces over the king), the base axis within about 2 cm of the board centre |
 | Controller board | OpenCR 1.0 with ROBOTIS `usb_to_dxl` firmware, on `/dev/ttyACM0` |
 | Computer | NVIDIA Jetson Orin NX 16GB, Ubuntu 22.04, JetPack 6, Python 3.10 |
 | Camera | Logitech BRIO, to look down at the board (not used yet) |
@@ -34,7 +35,7 @@ arm coordinates, safety rules) is written down in [docs/robo_handoff.md](docs/ro
 | Bin | a small box right next to the middle of one side of the board, about 20–22 cm from the point under the base, for captured pieces (further out, the arm lets go above it and the piece drops in) |
 
 Why upside down: standing on the table, the arm can't reach the far rows of this board. Hanging
-430 mm above the board centre, it reaches every square (gripper tilted up to 30°). The base turns
+about 48 cm above the board centre, it reaches every square (gripper tilted up to 30°). The base turns
 through its full range (±179°, more than Robo's ±160°), so leave enough slack in its cables for a
 full turn. Directly behind the arm the two ends of that range meet: moves that cross there swing
 the base round the long way, slowly and at a safe height.
@@ -154,7 +155,7 @@ python3 -m autochess.park
 ```
 
 The park pose folds the arm up under the beam: about 19 cm above the board (the king is 8 cm),
-sticking out only about 12 cm, and at least 7 cm clear of the mount plate. (ROBOTIS's "home", all
+sticking out only about 14 cm, and at least 7 cm clear of the mount plate. (ROBOTIS's "home", all
 joints at 0, isn't used: hanging, it sticks the forearm out sideways about 30 cm.) Before moving it
 checks the arm's angles are sensible (a limp arm hangs just past the elbow limit, which is
 allowed), that the move stays clear of the plate, and that the arm never goes lower on the way.
@@ -201,6 +202,23 @@ reaches every square. If that's under 145 mm, the arm hangs a bit low: it says h
 It then shows you e5, in the middle, to check. However it ends (finished,
 `q`, or an error), the arm goes back to its home pose by itself. The result is saved in
 `data/board.json` (not in git: it belongs to this robot).
+
+**Fitting the 40 mm fingertip extensions** (or any other change to the fingers)
+
+The corners and the bin are saved as points in space, so they stay valid when the fingers change,
+as long as the arm hasn't moved. What changes is how far down the arm reaches, and so how high it
+can carry pieces: with the extensions and the arm at its old height, the carrying height drops by
+about 4 cm (to under 9 cm: below the tallest pieces). So:
+
+1. Update the code (`FINGERS` and the park pose already are) before moving the arm: the old park pose
+   would fold the longer fingers into the mount plate.
+2. Raise the arm **5 cm** straight up on the frame (without turning it), then run
+   `python3 -m autochess.calibrate --raised 50` (no arm movement, no corners to touch). It reports the
+   new carrying height; aim for 12 cm or more (the highest it will pick is 14.5 cm).
+3. Check it with `python3 -m autochess.try_move e2e4`, then re-tune the grip heights (step 5): the fingertips
+   are now the ends of the extensions.
+4. If the fingertips end up hovering or pressing on the board, the extensions aren't exactly 40 mm
+   longer: change `FINGERS` or touch the four corners again (`python3 -m autochess.calibrate --height 480`).
 
 **5. Test single moves and tune the grip**
 
