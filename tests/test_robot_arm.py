@@ -247,3 +247,47 @@ def test_letting_go_opens_wider_than_the_piece_and_retries_if_stuck():
     assert ros.opens[2] == pytest.approx(0.004 + RELEASE)
     assert ros.opens[3] == GRIPPER_FULL_OPEN          # it stuck, so it opened all the way
     assert not arm.holding
+
+
+def test_saving_a_calibration_keeps_the_old_one(tmp_path):
+    from autochess.geometry import backup, list_backups
+    path = tmp_path / "board.json"
+    first = my_board()
+    first.save(path)                                   # nothing to keep yet
+    assert list_backups(path) == []
+    second = my_board()
+    second.travel = 111.0
+    second.save(path)                                  # the first one is copied into backups/
+    [kept] = list_backups(path)
+    assert kept.parent == tmp_path / "backups" and kept.name.endswith("-auto.json")
+    assert Board.load(kept).travel == first.travel and Board.load(path).travel == 111.0
+    manual = backup(path, "tuned")                     # a copy you make yourself
+    assert manual.name.endswith("-tuned.json") and Board.load(manual).travel == 111.0
+    assert backup(path, "tuned") == manual             # nothing changed since: no duplicate
+    second.travel = 112.0
+    second.save(path)                                  # the previous one (111) is already kept: no extra copy
+    assert len(list_backups(path)) == 2
+    for i in range(60):                                # automatic copies are capped; yours never are
+        second.travel = 200.0 + i
+        second.save(path)
+    names = [b.name for b in list_backups(path)]
+    assert sum(n.endswith("-tuned.json") for n in names) == 1 and len(names) <= 41
+
+
+def test_backup_command_lists_and_restores(tmp_path, monkeypatch, capsys):
+    import autochess.backup as cmd
+    import autochess.geometry as geometry
+    path = tmp_path / "board.json"
+    for mod in (cmd, geometry):
+        monkeypatch.setattr(mod, "BOARD_FILE", path)
+    b = my_board()
+    b.travel = 125.0
+    b.save(path)
+    monkeypatch.setattr("sys.argv", ["backup", "--label", "good"])
+    cmd.main()
+    assert "carrying height 125 mm" in capsys.readouterr().out
+    b.travel = 90.0
+    b.save(path)                                       # a bad calibration overwrites it
+    monkeypatch.setattr("sys.argv", ["backup", "--restore", "latest"])
+    cmd.main()
+    assert Board.load(path).travel == 125.0            # back to the good one

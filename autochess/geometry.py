@@ -7,12 +7,15 @@ corners, so the board needn't be square to the arm or level, and small errors in
 measurements largely cancel out. (Older calibrations without h8 assume a parallelogram.)
 """
 import json
+import shutil
+import time
 from pathlib import Path
 
 import chess
 import numpy as np
 
 BOARD_FILE = Path(__file__).resolve().parent.parent / "data" / "board.json"
+KEEP_AUTO_BACKUPS = 40          # automatic backups kept (named ...-auto.json); ones you make yourself are never deleted
 
 TALLEST = 80.0          # the king, mm: nothing may come lower than this over the board, plus a margin
 CLEARANCE = 15.0        # that margin
@@ -30,6 +33,39 @@ GRIP_EFFORT = 60.0
 EMPTY_GRIP = -0.008     # fingers closed past this: nothing between them (until start() measures it)
 HELD_MARGIN = 0.001     # fingers stopping 1 mm short of an empty close: they're holding a piece
                         # (try_move --held-margin; smaller for pieces barely wider than the closed gripper)
+
+
+def backup_dir(path=None):
+    return (path or BOARD_FILE).parent / "backups"
+
+
+def list_backups(path=None):
+    """Saved copies of the calibration, newest first."""
+    folder = backup_dir(path)
+    return sorted(folder.glob("board-*.json"), reverse=True) if folder.exists() else []
+
+
+def backup(path=None, label="manual"):
+    """Copy the saved calibration into data/backups/ as board-YYYYmmdd-HHMMSS-<label>.json.
+    Returns the copy's path, or None if there is nothing saved yet. If the newest copy already holds
+    exactly the same calibration, nothing new is made and that one is returned."""
+    path = path or BOARD_FILE
+    if not path.exists():
+        return None
+    old = list_backups(path)
+    if old and old[0].read_text() == path.read_text():
+        return old[0]
+    folder = backup_dir(path)
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    target, n = folder / f"board-{stamp}-{label}.json", 1
+    while target.exists():                       # two saves in the same second
+        n += 1
+        target = folder / f"board-{stamp}-{label}-{n}.json"
+    shutil.copy2(path, target)
+    for stale in [b for b in list_backups(path) if b.stem.split("-", 3)[3].startswith("auto")][KEEP_AUTO_BACKUPS:]:
+        stale.unlink()
+    return target
 
 
 class Board:
@@ -84,6 +120,7 @@ class Board:
     def save(self, path=None):
         path = path or BOARD_FILE
         path.parent.mkdir(parents=True, exist_ok=True)
+        backup(path, "auto")                     # never overwrite a calibration without keeping the old one
         data = {"a1": self.a1.tolist(), "h1": self.h1.tolist(), "a8": self.a8.tolist(), "h8": self.h8.tolist(),
                 "drop": self.drop.tolist(), "travel": self.travel, "gripper_open": self.gripper_open,
                 "held_margin": self.held_margin,

@@ -202,6 +202,21 @@ It then shows you e5, in the middle, to check. However it ends (finished,
 `q`, or an error), the arm goes back to its home pose by itself. The result is saved in
 `data/board.json` (not in git: it belongs to this robot).
 
+**Back up the calibration.** `data/board.json` holds the calibration, the grip heights and the
+other grip settings. It belongs to this robot, so git ignores it, and `git pull` never touches it.
+Every time it's about to be overwritten (a calibration, `--raised`, `try_move --save`), the old
+copy is kept in `data/backups/` automatically (the newest 40). To keep one on purpose, for example
+once a lot of grips have been tuned:
+
+```bash
+python3 -m autochess.backup --label tuned      # save a copy now, and show what it holds
+python3 -m autochess.backup --list             # the saved copies, newest first
+python3 -m autochess.backup --restore latest   # put one back (the current one is copied first)
+```
+
+To keep a copy off the Jetson as well, copy the folder to another computer, for example from the
+Mac: `scp -r jetson@<address>:~/Documents/Auto-chess/data/backups ~/Auto-chess-backups`.
+
 **5. Test single moves and tune the grip**
 
 Set up the pieces in the starting position, then for example:
@@ -266,6 +281,7 @@ switch off the 12 V.
 | `autochess/geometry.py` | Where every square is (from the calibration), grip heights for each piece |
 | `autochess/calibrate.py` | Keyboard calibration of the board: `python3 -m autochess.calibrate` |
 | `autochess/robot_arm.py` | Turns a chess move into arm steps (captures, castling, en passant, promotion) and asks for help if one fails |
+| `autochess/backup.py` | Saves, lists and restores copies of the calibration: `python3 -m autochess.backup` |
 | `autochess/try_move.py` | Plays test moves with the real arm and tunes grip heights: `python3 -m autochess.try_move` |
 | `autochess/pretend.py` | A pretend arm and pretend eyes, so everything runs without the robot |
 | `tests/` | Tests (`python -m pytest -q`) |
