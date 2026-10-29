@@ -236,6 +236,13 @@ that are holding a piece. Each close prints the finger position, e.g.
 
 **6. If something goes wrong**
 
+**The arm checks it arrived.** Before it closes the gripper on a piece, or opens it to put one down,
+it reads where its joints really are. If any joint is still more than about 3° from where it was
+sent (a servo stalled at its limit, or something is in the way), it does not touch the gripper:
+a piece let go in mid-air would fall. It holds still, the screen says "I stopped because my elbow
+stopped 8 degrees short of where it should be" (and, if it's holding a piece, to take it out of the
+gripper), and only after you press Done does it let go and park.
+
 While carrying, the arm keeps its elbow and wrist above the tallest piece (the 80 mm king) plus
 15 mm, and the fingertips that much higher again as the held piece hangs below them. It measures
 this from the board surface right under it, so a board that isn't quite level is fine.

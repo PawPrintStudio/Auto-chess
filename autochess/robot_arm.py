@@ -4,6 +4,8 @@ A chess move becomes physical steps (plan_steps), which the arm carries out one 
 fails (a piece wasn't gripped, or a square is out of reach), the arm parks and asks a person to do
 the rest of the move by hand, then carries on with the game.
 """
+import time
+
 import chess
 import numpy as np
 
@@ -16,8 +18,18 @@ NAMES = {chess.PAWN: "pawn", chess.KNIGHT: "knight", chess.BISHOP: "bishop", che
          chess.QUEEN: "queen", chess.KING: "king"}
 
 
+ARRIVE_TOL = 0.05       # rad (about 3 degrees): how close the joints must be to where they were sent
+ARRIVE_WAIT = 2.0       # s the arm gets to settle before that counts as a failure
+JOINT_NAMES = ["base", "shoulder", "elbow", "wrist"]
+
+
 class Missed(Exception):
     """The gripper closed on nothing."""
+
+
+class NotArrived(Exception):
+    """A joint stopped short of where it was sent (a servo stalled at a stop, or something is in the way).
+    Never move the gripper then: a piece let go of in mid-air falls, and a close in the wrong place misses."""
 
 
 def plan_steps(board, move):
@@ -103,6 +115,10 @@ class RealArm:
                     self._park_and_ask(steps[i:], board.turn)
                     return
                 getattr(self, "_" + kind)(sq, piece)
+            except NotArrived as e:
+                self.log(f"[arm] {kind} {chess.square_name(sq) if sq is not None else ''}: {e}")
+                self._hold_and_ask(steps, i, board.turn, str(e))
+                return
             except (Unsafe, Missed) as e:
                 self.log(f"[arm] {kind} {chess.square_name(sq) if sq is not None else ''}: {e}")
                 start, note = i, ""
@@ -142,6 +158,7 @@ class RealArm:
         self.ros.gripper(self.geo.gripper_open)
         for attempt in range(2):
             self.mover.line_to(self.geo.square(sq, self.geo.grip[piece]))
+            self._arrived()
             got = self.ros.gripper(GRIPPER_CLOSED, GRIP_EFFORT)
             self.log(f"[arm] gripper closed to {got if got is not None else float('nan'):+.4f} on the {NAMES[piece]}"
                      f" ({'holding it' if got is not None and got > self.empty_limit else 'nothing there'})")
@@ -157,6 +174,7 @@ class RealArm:
     def _put(self, sq, piece):
         self.mover.go_to(self._above(sq), floor=self._floor())
         self.mover.line_to(self.geo.square(sq, self.geo.grip[piece] + 2))
+        self._arrived()
         self.release()
         self.mover.line_to(self._above(sq))
 
@@ -178,9 +196,28 @@ class RealArm:
         except Unsafe:
             lowered = False          # can't get down to it safely from here: let go above it, it falls in
             self.log("[arm] letting go above the bin instead")
+        self._arrived()
         self.release()
         if lowered:
             self.mover.joint_move(q_up)
+
+    def _arrived(self):
+        """Wait up to ARRIVE_WAIT s for the real joint angles to reach where the arm was sent; if a
+        joint stays more than ARRIVE_TOL off, raise NotArrived (before the gripper does anything)."""
+        target = self.mover.q
+        end = time.time() + ARRIVE_WAIT
+        while True:
+            now = self.ros.angles()
+            if now is None:
+                raise NotArrived("the arm isn't reporting its joint angles")
+            err = [abs(a - b) for a, b in zip(now, target)]
+            if max(err) <= ARRIVE_TOL:
+                return
+            if time.time() >= end:
+                j = int(np.argmax(err))
+                raise NotArrived(f"my {JOINT_NAMES[j]} stopped {np.degrees(err[j]):.0f} degrees short of where it "
+                                 f"should be")
+            time.sleep(0.1)
 
     def release(self):
         """Let go of the held piece: open a clear 8 mm per finger wider than where the fingers stopped
@@ -193,6 +230,28 @@ class RealArm:
             got = self.ros.gripper(GRIPPER_FULL_OPEN)
         self.log(f"[arm] let go: fingers at {got if got is not None else float('nan'):+.4f}")
         self.holding, self.grip_pos = False, None
+
+    def _hold_and_ask(self, steps, i, color, why):
+        """The arm didn't get where it was sent: stay exactly where it is (don't touch the gripper), say so,
+        and wait for a person. Only after they press Done: let go, and park."""
+        start = i
+        if self.holding:
+            start = max(j for j in range(i + 1) if steps[j][0] == "take")
+        text = (f"I stopped because {why}. " + ("I'm still holding the piece: take it out of my gripper. "
+                                                  if self.holding else "") + describe(steps[start:], color))
+        if self.ask:
+            self.ask(text)
+        else:
+            input(text + " ")
+        try:
+            if self.holding:
+                self.release()
+            else:
+                self.ros.gripper(self.geo.gripper_open)
+            self.mover.refresh()                     # a person may have moved the arm
+            self.mover.park()
+        except Unsafe as e:
+            self.log(f"[arm] couldn't park afterwards: {e}")
 
     def _park_and_ask(self, steps, color, failed=False, note=""):
         try:

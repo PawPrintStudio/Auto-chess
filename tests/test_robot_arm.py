@@ -291,3 +291,49 @@ def test_backup_command_lists_and_restores(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("sys.argv", ["backup", "--restore", "latest"])
     cmd.main()
     assert Board.load(path).travel == 125.0            # back to the good one
+
+
+def test_gripper_is_not_touched_if_the_arm_did_not_arrive(monkeypatch):
+    class StalledRos(FakeRos):
+        """Reports the elbow 8 degrees short of wherever it was sent, once the arm is low over the board."""
+        def angles(self):
+            q = list(self.q)
+            if fingertip(self.q)[2] > H - 60:
+                q[2] += np.radians(8)
+            return tuple(q)
+
+    ros, asked = StalledRos(), []
+    arm = RealArm(ros, my_board(), log=lambda s: None)
+    arm.ask = asked.append
+    arm.start()
+    closes_before = ros.closes
+    monkeypatch.setattr("autochess.robot_arm.ARRIVE_WAIT", 0.2)     # don't make the test wait 2 s
+    arm.play(chess.Board(), chess.Move.from_uci("g1f3"))
+    assert ros.closes == closes_before               # it never tried to close on the knight
+    assert asked == ["I stopped because my elbow stopped 8 degrees short of where it should be. "
+                     "Please move the knight from g1 to f3, and press Done."]
+    assert not arm.holding
+
+
+def test_a_piece_is_never_let_go_in_mid_air(monkeypatch):
+    class StallsWhenPlacing(FakeRos):
+        """Fine until the piece is picked up; then the elbow stalls on the way to the destination."""
+        def angles(self):
+            q = list(self.q)
+            if self.closes >= 2 and fingertip(self.q)[2] > H - 60:
+                q[2] += np.radians(8)
+            return tuple(q)
+
+    ros, asked = StallsWhenPlacing(), []
+    opens = []
+    real_gripper = ros.gripper
+    ros.gripper = lambda pos, effort=100.0: (opens.append(pos), real_gripper(pos, effort))[1] if pos != GRIPPER_CLOSED \
+        else real_gripper(pos, effort)
+    arm = RealArm(ros, my_board(), log=lambda s: None)
+    arm.ask = asked.append
+    arm.start()
+    monkeypatch.setattr("autochess.robot_arm.ARRIVE_WAIT", 0.2)
+    arm.play(chess.Board(), chess.Move.from_uci("g1f3"))
+    assert "still holding the piece" in asked[0]
+    # the only opens: start(), before going down to grip, and AFTER the person pressed Done (never at the stall)
+    assert len(opens) == 3 and not arm.holding
