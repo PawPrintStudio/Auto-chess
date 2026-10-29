@@ -213,8 +213,10 @@ python3 -m autochess.calibrate_squares            # the 32 pieces, rank by rank 
 ```
 
 For each piece you steer the fingertips to the perfect grab: centred on it, gripper straight down, a
-little above the board and not touching it. The arm never goes down by itself. You steer the first square
-all the way (until it has seen one, it doesn't know how deep the board is). After that it goes over each
+little above the board and not touching it. The arm never goes down by itself. For the first square it
+unfolds from its folded home pose to over a1 (high, gripper pointing down; it asks first) and you steer it
+down yourself with the fingertip keys (until it has seen one square, it doesn't know how deep the board is;
+look at the fingers against the rook tops before the first `f`). After that it goes over each
 next square by itself, stops 20 mm above the top of the piece, and you steer the last bit. Then it lifts
 and comes back down to the spot you showed so you can check it: `y` (perfect), `n` (steer again), `s`
 (skip), `q` (stop). Everything is saved after each answer, so you can stop and carry on later: squares

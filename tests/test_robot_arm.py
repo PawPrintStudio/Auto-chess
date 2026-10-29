@@ -432,10 +432,15 @@ def test_teaching_by_grabbing_never_goes_down_by_itself_and_learns_the_board_hei
     from autochess.kinematics import PARK
     from autochess.motion import Mover
 
-    real = my_board()                                         # where the board really is
-    model = my_board()
-    for p in (model.a1, model.h1, model.a8, model.h8, model.drop):
-        p[2] += 70.0                                          # the calibration thinks it is 70 mm deeper
+    def board(extra_depth):                                   # a real calibration (tilted board), made with the 190 mm fingers
+        def at(angle, out, depth):
+            a = np.radians(angle)
+            return (out * np.cos(a), out * np.sin(a), depth + extra_depth)
+        return Board(at(-49, 178, 438), at(-135, 218, 420), at(48, 197, 426), (-250.0, 0.0, 360.0 + extra_depth),
+                     h8=at(140, 205, 428), travel=117.0)
+
+    real = board(0.0)                                         # where the board really is
+    model = board(70.0)                                       # the calibration thinks it is 70 mm deeper
     start = chess.Board()
     ros = FakeRos()
     ros.q = (0.0, *PARK)
@@ -443,11 +448,15 @@ def test_teaching_by_grabbing_never_goes_down_by_itself_and_learns_the_board_hei
     mover.refresh()
     asked, heights, steered, saves = [], [], [], []
 
-    def steer(mover_, prompt, deepest, board_depth, straight=False):
+    def steer(mover_, prompt, deepest, board_depth, straight=False, **kw):
         sq = squares[len(steered)]
         steered.append(sq)
         if len(steered) == 1:
-            assert not ros.points                              # the first square is steered entirely by hand
+            # The arm unfolded by itself, high above the board all the way and ending with the gripper pointing down.
+            a1 = real.square(chess.A1)
+            assert ros.points and all(real.height_above(p) > (60 if np.linalg.norm(p[:2] - a1[:2]) < 120 else 100)
+                                      for p in ros.points if real.over_board(p, margin=60.0))
+            assert abs(np.degrees(sum(ros.q[1:]) - np.radians(-90))) < 30
         else:
             heights.append(real.height_above(fingertip(ros.q)))    # where the arm stopped by itself, above the real board
         return real.square(sq, model.grip[start.piece_type_at(sq)])      # the perfect grab, as the user would show it
@@ -480,11 +489,11 @@ def test_teaching_can_steer_again_skip_and_stop():
     start = chess.Board()
     count = []
 
-    def steer(mover_, prompt, deepest, board_depth, straight=False):
+    def steer(mover_, prompt, deepest, board_depth, straight=False, **kw):
         count.append(prompt)
         return None if len(count) == 3 else b.square(chess.E2, b.grip[chess.PAWN]) + [0.0, 0.0, len(count)]
 
-    answers = iter("nys")                                       # e2: steer again, then accept; d2: cancelled while steering
+    answers = iter("yny")                                       # unfold; e2: steer again, then accept; d2: cancelled
     result = teach(mover, b, [chess.E2, chess.D2], lambda sq: start.piece_type_at(sq), answer=lambda t: next(answers),
                    steer=steer, save=lambda: None, log=lambda s: None)
     assert result == "done" and len(count) == 3 and b.checked == {chess.E2}      # e2 steered twice, d2 cancelled

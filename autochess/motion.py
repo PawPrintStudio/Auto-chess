@@ -116,9 +116,30 @@ class Mover:
         except Unsafe as e:
             if "dip" not in str(e):
                 raise
-            self.joint_move((self.q[0], *PARK), floor=floor)
-            self.joint_move((q[0], *PARK))
-            self.joint_move(q, floor=floor)
+            try:
+                self.joint_move((self.q[0], *PARK), floor=floor)
+                self.joint_move((q[0], *PARK))
+                self.joint_move(q, floor=floor)
+            except Unsafe as e2:
+                if "dip" not in str(e2):
+                    raise
+                self._route_to(q, floor)       # neither is clear of the board: search for a route that is
+
+    def _route_to(self, q, floor):
+        """Last resort: a chain of small joint moves from here to q that stays clear of the board (route.find)."""
+        from .route import NoRoute, find
+        if callable(floor):
+            ok = floor
+        else:
+            ok = lambda q4: max(p[1] for p in joints_xyz(q4[1:])) <= floor
+        try:
+            moves = find(self.q, q, ok)
+        except NoRoute as e:
+            raise Unsafe(f"the move would dip too low over the board ({e})")
+        times = np.cumsum([s for _, s, _ in moves])
+        if not self.arm.move_path([m for m, _, _ in moves], [float(t) for t in times]):
+            raise Unsafe("the arm didn't finish the move")
+        self.q = tuple(float(x) for x in moves[-1][0])
 
     def park(self):
         base = float(np.clip(self.q[0] if self.q else self.refresh()[0], *LIMITS[0]))

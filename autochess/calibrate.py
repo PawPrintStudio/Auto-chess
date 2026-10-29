@@ -57,11 +57,11 @@ def yes_no(question):
         print("Please type y or n, then Enter.")
 
 
-def jog(mover, prompt, deepest, board_depth, straight=False):
+def jog(mover, prompt, deepest, board_depth, straight=False, joint_mode=True):
     """Let the user steer the arm; returns the fingertip point when they press Enter (None on q).
     Nothing goes deeper than `deepest` (mm below the plate). With straight=True, Enter with the
     gripper tilted more than MAX_TILT asks for it to be straightened first (Enter again overrides)."""
-    joint_mode, step, jstep = True, 5.0, 3.0
+    step, jstep = 5.0, 3.0
     warned = False
     print(f"\n>>> {prompt}")
     while True:

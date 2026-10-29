@@ -4,8 +4,10 @@ Set the pieces up in the starting position. For each piece in turn you steer the
 exactly where they should grab it (centred on the piece, gripper straight down, a little above the
 board, not touching it), with the pieces all standing. The arm never goes down by itself:
 
-  * The first square you steer all the way yourself, because until you've shown it one square it
-    can't know how deep the board really is.
+  * For the first square the arm unfolds from its folded home pose to over the square, high above the
+    board and with the gripper pointing down (you're asked first; it takes about 20 s and keeps clear of
+    the board). You then steer it down yourself, because until you've shown it one square it can't
+    know how deep the board really is. Use the fingertip keys for that (they start active).
   * After that, the arm goes over each next square by itself, stops 20 mm above the top of the piece
     (clear of it, even if its idea of the board is still a little off) and you steer the last bit.
   * Then it lifts and comes back down to the spot you showed, so you can check it is the perfect grab:
@@ -30,11 +32,15 @@ import sys
 import termios
 
 import chess
+import numpy as np
 
 from .calibrate import go_home, jog, read_key
 from .geometry import PIECE_HEIGHT, Board
+from .kinematics import DOWN
 from .motion import Mover, Unsafe
 from .park import follow, plan
+from .unfold import CLEARANCE as UNFOLD_CLEARANCE
+from .unfold import plan as plan_unfold
 from .robot_arm import NAMES, clearance_floor
 
 CLEAR_TOP = 20.0        # mm above the top of the piece where the arm stops by itself
@@ -77,6 +83,32 @@ def approach(mover, b, sq, height):
     mover.arrive()
 
 
+def tilted(mover):
+    """True while the gripper is far from pointing down: the joint keys are needed then (the fingertip
+    keys only work with the gripper within 30 degrees of straight down)."""
+    return abs(np.degrees(sum(mover.q[1:]) - DOWN)) > 30.0
+
+
+def unfold(mover, b, sq, answer, log):
+    """From the folded home pose, unfold to over square sq with the gripper pointing down, high above
+    the board all the way (nothing is known yet about how deep the board really is)."""
+    mover.refresh()
+    if not tilted(mover):
+        return
+    try:
+        moves = plan_unfold(mover.q, b, sq)
+    except Unsafe as e:
+        log(f"    can't plan a safe way to unfold ({e}): use the joint keys, slowly, and keep the arm high.")
+        return
+    total = sum(s for _, s, _ in moves)
+    a = answer(f"The arm will now unfold, staying at least {UNFOLD_CLEARANCE / 10:.0f} cm above the board as the "
+               f"calibration has it, to over {chess.square_name(sq)} with the gripper pointing down "
+               f"({total:.0f} s). y = go, n = I'll steer it myself: ")
+    if a == "y" and not follow(mover.arm, moves):
+        log("    the arm didn't finish unfolding.")
+    mover.refresh()
+
+
 def teach(mover, b, squares, piece_at, answer=ask_key, steer=jog, save=None, log=print):
     """Walk through `squares`: show the arm the perfect grab on each. `piece_at(sq)` is the piece type
     standing there. Returns "done" or "quit". `save` (default b.save) is called after every answer."""
@@ -85,6 +117,8 @@ def teach(mover, b, squares, piece_at, answer=ask_key, steer=jog, save=None, log
         name, pt = chess.square_name(sq), piece_at(sq)
         grip = b.grip[pt]
         manual = not b.squares          # nothing taught yet: the board height isn't known, so no moving by itself
+        if manual:
+            unfold(mover, b, sq, answer, log)
         while True:
             if not manual:
                 try:
@@ -97,7 +131,8 @@ def teach(mover, b, squares, piece_at, answer=ask_key, steer=jog, save=None, log
             limit = depth + (30.0 if not b.squares else -LOWEST_ALLOWED)
             p = steer(mover, f"[{n}/{len(squares)}] Steer the fingertips to the perfect grab on the {NAMES[pt]} on "
                              f"{name}: centred on it, gripper straight down, a little above the board, not touching "
-                             f"it. Enter = this is it, q = cancel.", limit, depth, straight=True)
+                             f"it. Enter = this is it, q = cancel.", limit, depth, straight=True,
+                      joint_mode=tilted(mover))
             if p is None:
                 break
             b.set_square(sq, p + [0.0, 0.0, grip])         # the board is `grip` below the fingertips of a grab
