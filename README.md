@@ -243,6 +243,14 @@ a piece let go in mid-air would fall. It holds still, the screen says "I stopped
 stopped 8 degrees short of where it should be" (and, if it's holding a piece, to take it out of the
 gripper), and only after you press Done does it let go and park.
 
+**The pads are aimed, not the fingertips.** The part of the fingers that squeezes a piece (the pads)
+sits a little above the tips. Straight down that makes no difference, but with the gripper tilted
+the pads end up beside the tips, so the arm aims the pads at the piece. It needs one number: the
+distance from the fingertips up to the middle of the pads, in mm (measure it on the gripper with a
+ruler). The default is 15 (a guess); set yours with
+`python3 -m autochess.try_move e2e4 --pad-offset 12 --save`. On this board only a few squares
+need any tilt at grip height, so don't expect a big change.
+
 While carrying, the arm keeps its elbow and wrist above the tallest piece (the 80 mm king) plus
 15 mm, and the fingertips that much higher again as the held piece hangs below them. It measures
 this from the board surface right under it, so a board that isn't quite level is fine.

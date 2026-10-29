@@ -5,7 +5,7 @@ for joint moves, never lower than `floor` (a depth below the plate) along the wa
 """
 import numpy as np
 
-from .kinematics import LIMITS, PARK, clear_of_mount, fingertip, ik, joints_xyz, within_limits
+from .kinematics import FINGERS, LIMITS, PARK, clear_of_mount, fingertip, ik, joints_xyz, within_limits
 
 JOINT_SPEED = 0.6       # rad/s for the joint that moves furthest
 LINE_SPEED = 60.0       # mm/s along straight lines
@@ -21,6 +21,7 @@ class Mover:
         self.arm = arm                      # RosArm (or a fake with angles/move/move_path/gripper)
         self.joint_speed, self.line_speed = joint_speed, line_speed
         self.q = None
+        self.fingers = FINGERS      # wrist-to-steered-point length: the fingertips, or (shorter) the pads
 
     def refresh(self):
         q = self.arm.angles()
@@ -30,7 +31,7 @@ class Mover:
         return self.q
 
     def where(self):
-        return fingertip(self.q)
+        return fingertip(self.q, self.fingers)
 
     def joint_move(self, q4, floor=None, seconds=None):
         """Move to q4 with all joints turning together. floor: the arm mustn't go deeper than this
@@ -59,7 +60,7 @@ class Mover:
         qs, near = [], self.q
         kw = {} if max_tilt is None else {"max_tilt": max_tilt}
         for i in range(1, n + 1):
-            q = ik(a + (b - a) * i / n, near=near, smooth=True, **kw)
+            q = ik(a + (b - a) * i / n, near=near, smooth=True, fingers=self.fingers, **kw)
             if q is None:
                 raise Unsafe(f"can't reach {np.round(a + (b - a) * i / n)} (out of reach)")
             if np.max(np.abs(np.array(q) - np.array(near))) > 0.35:
@@ -75,7 +76,7 @@ class Mover:
     def go_to(self, point, floor):
         """Get the fingertips to point (X, Y, Z) staying above floor: a joint move if it doesn't dip,
         otherwise up through the park pose (fold up, turn, come back down)."""
-        q = ik(point, near=self.q)
+        q = ik(point, near=self.q, fingers=self.fingers)
         if q is None:
             raise Unsafe(f"can't reach {np.round(point)} (out of reach)")
         self.go_to_q(q, floor)

@@ -10,7 +10,7 @@ import chess
 import numpy as np
 
 from .geometry import CLEARANCE, EMPTY_GRIP, GRIP_EFFORT, GRIPPER_CLOSED, GRIPPER_FULL_OPEN, RELEASE, TALLEST
-from .kinematics import ik, joint_points
+from .kinematics import FINGERS, ik, joint_points
 from .motion import Mover, Unsafe
 from .park import follow, plan
 
@@ -83,6 +83,9 @@ class RealArm:
     def __init__(self, ros_arm, geo, log=print):
         self.ros, self.geo, self.log = ros_arm, geo, log
         self.mover = Mover(ros_arm)
+        # Over the squares the PADS are steered, not the fingertips: with the gripper tilted the pads sit
+        # a little to the side of the tips. Straight down it makes no difference.
+        self.mover.fingers = FINGERS - geo.pad_offset
         self.ask = None             # set by the game: ask(text) shows text and waits for Done
         self.holding, self.held = False, None    # held: (square it came from, piece)
         self.grip_pos = None                      # where the fingers stopped on the held piece
@@ -135,8 +138,12 @@ class RealArm:
         self.mover.park()
 
     # ---- steps ----
+    def _at(self, sq, tip_height):
+        """Where the pads go for the fingertips to be tip_height above the board with the gripper straight down."""
+        return self.geo.square(sq, tip_height + self.geo.pad_offset)
+
     def _above(self, sq):
-        return self.geo.square(sq, self.geo.travel)
+        return self._at(sq, self.geo.travel)
 
     def _floor(self):
         """Over the board, nothing may hit the pieces standing on it (up to the 80 mm king): the elbow
@@ -157,7 +164,7 @@ class RealArm:
         self.mover.go_to(self._above(sq), floor=self._floor())
         self.ros.gripper(self.geo.gripper_open)
         for attempt in range(2):
-            self.mover.line_to(self.geo.square(sq, self.geo.grip[piece]))
+            self.mover.line_to(self._at(sq, self.geo.grip[piece]))
             self._arrived()
             got = self.ros.gripper(GRIPPER_CLOSED, GRIP_EFFORT)
             self.log(f"[arm] gripper closed to {got if got is not None else float('nan'):+.4f} on the {NAMES[piece]}"
@@ -167,13 +174,13 @@ class RealArm:
                 self.mover.line_to(self._above(sq))
                 return
             self.ros.gripper(self.geo.gripper_open)
-            self.mover.line_to(self.geo.square(sq, self.geo.grip[piece] + 20))
+            self.mover.line_to(self._at(sq, self.geo.grip[piece] + 20))
         self.mover.line_to(self._above(sq))
         raise Missed(f"couldn't grip the {NAMES[piece]}")
 
     def _put(self, sq, piece):
         self.mover.go_to(self._above(sq), floor=self._floor())
-        self.mover.line_to(self.geo.square(sq, self.geo.grip[piece] + 2))
+        self.mover.line_to(self._at(sq, self.geo.grip[piece] + 2))
         self._arrived()
         self.release()
         self.mover.line_to(self._above(sq))

@@ -26,6 +26,9 @@ TRAVEL = 145.0          # fingertip height above the board while moving between 
 GRIP = {chess.PAWN: 22.0, chess.ROOK: 25.0, chess.KNIGHT: 28.0, chess.BISHOP: 32.0,
         chess.QUEEN: 38.0, chess.KING: 42.0}
 GRIPPER_OPEN = 0.0      # partly open (about 40 mm between the fingers), so they miss the neighbours
+PAD_OFFSET = 15.0       # mm from the fingertips up to the middle of the pads that squeeze the piece (measure it:
+                        # try_move --pad-offset). Only matters when the gripper is tilted: the pads, not the
+                        # fingertips, are then aimed at the piece.
 GRIPPER_CLOSED = -0.01
 GRIPPER_FULL_OPEN = 0.019
 RELEASE = 0.008         # letting go: open this much (per finger) wider than where the fingers stopped on the piece
@@ -70,13 +73,14 @@ def backup(path=None, label="manual"):
 
 class Board:
     def __init__(self, a1, h1, a8, drop, grip=None, travel=TRAVEL, gripper_open=GRIPPER_OPEN,
-                 held_margin=HELD_MARGIN, h8=None):
+                 held_margin=HELD_MARGIN, h8=None, pad_offset=PAD_OFFSET):
         self.a1, self.h1, self.a8 = (np.array(p, float) for p in (a1, h1, a8))
         self.h8 = np.array(h8, float) if h8 is not None else self.h1 + self.a8 - self.a1
         self.drop = np.array(drop, float)
         self.grip = dict(GRIP)
         self.grip.update({chess.PIECE_SYMBOLS.index(k): float(v) for k, v in (grip or {}).items()})
         self.travel, self.gripper_open, self.held_margin = travel, gripper_open, held_margin
+        self.pad_offset = float(pad_offset)
 
     def at(self, u, v):
         """Board surface point at board coordinates (u, v) in squares: 0 = centre of a1, 7 = centre of
@@ -123,7 +127,7 @@ class Board:
         backup(path, "auto")                     # never overwrite a calibration without keeping the old one
         data = {"a1": self.a1.tolist(), "h1": self.h1.tolist(), "a8": self.a8.tolist(), "h8": self.h8.tolist(),
                 "drop": self.drop.tolist(), "travel": self.travel, "gripper_open": self.gripper_open,
-                "held_margin": self.held_margin,
+                "held_margin": self.held_margin, "pad_offset": self.pad_offset,
                 "grip": {chess.PIECE_SYMBOLS[p]: h for p, h in self.grip.items()}}
         path.write_text(json.dumps(data, indent=2))
 
@@ -134,4 +138,4 @@ class Board:
             raise FileNotFoundError("the board isn't calibrated yet: python3 -m autochess.calibrate")
         d = json.loads(path.read_text())
         return cls(d["a1"], d["h1"], d["a8"], d["drop"], d.get("grip"), d.get("travel", TRAVEL),
-                   d.get("gripper_open", GRIPPER_OPEN), d.get("held_margin", HELD_MARGIN), d.get("h8"))
+                   d.get("gripper_open", GRIPPER_OPEN), d.get("held_margin", HELD_MARGIN), d.get("h8"), d.get("pad_offset", PAD_OFFSET))

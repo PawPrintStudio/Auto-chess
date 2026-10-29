@@ -337,3 +337,42 @@ def test_a_piece_is_never_let_go_in_mid_air(monkeypatch):
     assert "still holding the piece" in asked[0]
     # the only opens: start(), before going down to grip, and AFTER the person pressed Done (never at the stall)
     assert len(opens) == 3 and not arm.holding
+
+
+def test_the_pads_land_on_the_target_even_when_tilted():
+    from autochess.kinematics import FINGERS, ik, joint_points
+    b = my_board()
+    pad, tilted = b.pad_offset, 0
+    for sq in chess.SQUARES:
+        for h in (8.0, 125.0):
+            target = b.square(sq, h + pad)
+            q = ik(target, fingers=FINGERS - pad)
+            _, wrist, tip = joint_points(q)
+            axis = (tip - wrist) / np.linalg.norm(tip - wrist)          # along the fingers, toward the tips
+            assert tip - pad * axis == pytest.approx(target, abs=0.5)    # the middle of the pads is on target
+            tilt = np.degrees(sum(q[1:]) + np.pi / 2)
+            if abs(tilt) > 5:
+                tilted += 1
+                naive_tip = b.square(sq, h)
+                # the fingertip sits to the side by pad * sin(tilt): the old fingertip aim would have missed by that
+                assert np.linalg.norm((tip - naive_tip)[:2]) == pytest.approx(pad * abs(np.sin(np.radians(tilt))), abs=1.0)
+    assert tilted > 0                                                    # the test did cover tilted poses
+
+
+def test_pad_offset_is_saved_and_straight_down_grips_are_unchanged(tmp_path):
+    b = my_board()
+    b.pad_offset = 12.0
+    b.save(tmp_path / "board.json")
+    assert Board.load(tmp_path / "board.json").pad_offset == 12.0
+    lowest = {}
+    for pad in (0.0, 15.0):                   # e2 is near the middle: the gripper is straight down there
+        b = my_board()
+        b.pad_offset = pad
+        ros = FakeRos()
+        arm = RealArm(ros, b, log=lambda s: None)
+        arm.start()
+        arm.play(chess.Board(), chess.Move.from_uci("e2e4"))
+        assert arm.mover.fingers == pytest.approx(150.0 - pad)
+        lowest[pad] = H - max(p[2] for p in ros.points)               # the fingertips' lowest point above the board
+    assert lowest[0.0] == pytest.approx(b.grip[chess.PAWN], abs=1.0)
+    assert lowest[15.0] == pytest.approx(lowest[0.0], abs=1.0)        # the tuned grip heights still mean the same

@@ -257,7 +257,7 @@ def keep_grip_settings(b):
         old = Board.load()
     except (FileNotFoundError, KeyError, ValueError):
         return
-    b.grip, b.held_margin, b.gripper_open = old.grip, old.held_margin, old.gripper_open
+    b.grip, b.held_margin, b.gripper_open, b.pad_offset = old.grip, old.held_margin, old.gripper_open, old.pad_offset
 
 
 def shift_saved(mm):
