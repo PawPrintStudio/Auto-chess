@@ -45,6 +45,11 @@ class RosArm:
             if "gripper_left_joint" in pos:
                 self._gripper = pos["gripper_left_joint"]
 
+    def gripper_position(self):
+        """Where the fingers are right now (m), or None if the gripper isn't reporting."""
+        with self._lock:
+            return self._gripper
+
     def angles(self, timeout=10.0):
         """(base, shoulder, elbow, wrist) in radians, or None if the arm isn't reporting."""
         end = time.time() + timeout

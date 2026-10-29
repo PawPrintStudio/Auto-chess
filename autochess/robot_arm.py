@@ -27,6 +27,10 @@ class Missed(Exception):
     """The gripper closed on nothing."""
 
 
+class Dropped(Missed):
+    """A piece being carried fell out of the gripper."""
+
+
 class NotArrived(Exception):
     """A joint stopped short of where it was sent (a servo stalled at a stop, or something is in the way).
     Never move the gripper then: a piece let go of in mid-air falls, and a close in the wrong place misses."""
@@ -90,6 +94,7 @@ class RealArm:
         self.holding, self.held = False, None    # held: (square it came from, piece)
         self.grip_pos = None                      # where the fingers stopped on the held piece
         self.empty_limit = EMPTY_GRIP             # learned in start()
+        self.empty_pos = GRIPPER_CLOSED           # where the empty fingers stop (learned in start())
 
     def start(self):
         """Go to the home (park) pose from wherever the arm is now, by the same safe route as
@@ -103,6 +108,7 @@ class RealArm:
         # Close once on nothing to learn where empty fingers end up: closing on a piece stops short of that.
         empty = self.ros.gripper(GRIPPER_CLOSED, GRIP_EFFORT)
         self.empty_limit = (empty + self.geo.held_margin) if empty is not None else EMPTY_GRIP
+        self.empty_pos = empty if empty is not None else GRIPPER_CLOSED
         self.log(f"[arm] empty gripper closes to {empty if empty is not None else float('nan'):+.4f};"
                  f" holding a piece = stops above {self.empty_limit:+.4f}")
         self.ros.gripper(self.geo.gripper_open)
@@ -125,6 +131,8 @@ class RealArm:
             except (Unsafe, Missed) as e:
                 self.log(f"[arm] {kind} {chess.square_name(sq) if sq is not None else ''}: {e}")
                 start, note = i, ""
+                if isinstance(e, Dropped):
+                    note = str(e)[0].upper() + str(e)[1:] + ": look for it on the board. "
                 if self.holding:
                     # Still holding a piece: put it back where it came from, and hand over that whole step.
                     start = max(j for j in range(i + 1) if steps[j][0] == "take")
@@ -166,12 +174,13 @@ class RealArm:
         for attempt in range(2):
             self.mover.line_to(self._at(sq, self.geo.grip[piece]))
             self._arrived()
-            got = self.ros.gripper(GRIPPER_CLOSED, GRIP_EFFORT)
+            got = self.ros.gripper(GRIPPER_CLOSED, self.geo.effort[piece])
             self.log(f"[arm] gripper closed to {got if got is not None else float('nan'):+.4f} on the {NAMES[piece]}"
                      f" ({'holding it' if got is not None and got > self.empty_limit else 'nothing there'})")
             if got is not None and got > self.empty_limit:
                 self.holding, self.held, self.grip_pos = True, (sq, piece), got
                 self.mover.line_to(self._above(sq))
+                self._check_still_holding()
                 return
             self.ros.gripper(self.geo.gripper_open)
             self.mover.line_to(self._at(sq, self.geo.grip[piece] + 20))
@@ -180,6 +189,7 @@ class RealArm:
 
     def _put(self, sq, piece):
         self.mover.go_to(self._above(sq), floor=self._floor())
+        self._check_still_holding()
         self.mover.line_to(self._at(sq, self.geo.grip[piece] + 2))
         self._arrived()
         self.release()
@@ -197,6 +207,7 @@ class RealArm:
         if q_up is None:
             raise Unsafe("can't reach the bin")
         self.mover.go_to_q(q_up, floor=self._floor())
+        self._check_still_holding()
         try:
             self.mover.joint_move(q_drop, floor=drop[2] + 5)
             lowered = True
@@ -207,6 +218,25 @@ class RealArm:
         self.release()
         if lowered:
             self.mover.joint_move(q_up)
+
+    def _check_still_holding(self):
+        """The fingers should still be stopped on the piece. Closed all the way (twice, 0.3 s apart, so a jolt
+        doesn't count) means it fell out: stop, and say so. Only checks while a piece is being carried."""
+        if not (self.holding and self.held):
+            return
+        piece = self.held[1]
+        limit = self.empty_pos + self.geo.held_margin / 3       # closer to fully closed than any real grip
+        pos = self.ros.gripper_position()
+        for attempt in range(2):
+            if pos is None or pos > limit:
+                if pos is not None:
+                    self.log(f"[arm] carrying the {NAMES[piece]}: fingers at {pos:+.4f}")
+                return
+            if attempt == 0:
+                time.sleep(0.3)
+                pos = self.ros.gripper_position()
+        self.holding, self.grip_pos = False, None
+        raise Dropped(f"the {NAMES[piece]} fell out of the gripper")
 
     def _arrived(self):
         """Wait up to ARRIVE_WAIT s for the real joint angles to reach where the arm was sent; if a

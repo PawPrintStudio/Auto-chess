@@ -251,6 +251,18 @@ ruler). The default is 15 (a guess); set yours with
 `python3 -m autochess.try_move e2e4 --pad-offset 12 --save`. On this board only a few squares
 need any tilt at grip height, so don't expect a big change.
 
+**A piece that falls out is noticed.** After picking a piece up, before putting it down and before the
+bin, the arm checks the fingers are still stopped on it (fully closed, twice in a row, means it's
+gone). If it fell, it stops and the screen says so ("The knight fell out of the gripper: look for it
+on the board. Please move the knight from g1 to f3") instead of carrying on and "putting down"
+nothing. The finger position is printed each time, e.g. `carrying the pawn: fingers at -0.0095`.
+
+**Squeeze per piece.** `try_move g1f3 --effort n=30 --save` sets how hard each piece type is squeezed
+(the gripper's `max_effort`, default 60). The gripper's goal is always "fully closed", so this is the
+only strength setting, and this ROS controller may ignore it: after a grip, the printed finger
+position (`gripper closed to -0.0031`) changes with the effort if it works. It's saved in
+`data/board.json` with the other grip settings.
+
 While carrying, the arm keeps its elbow and wrist above the tallest piece (the 80 mm king) plus
 15 mm, and the fingertips that much higher again as the held piece hangs below them. It measures
 this from the board surface right under it, so a board that isn't quite level is fine.

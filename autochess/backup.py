@@ -29,7 +29,8 @@ def describe(path):
     saved = time.strftime("%Y-%m-%d %H:%M", time.localtime(path.stat().st_mtime))
     return (f"  saved {saved}\n  squares {fs:.1f} x {rs:.1f} mm, carrying height {b.travel:.0f} mm\n"
             f"  grip heights (mm above the board): {grips}\n"
-            f"  holding margin {b.held_margin * 1000:.1f} mm, pad offset {b.pad_offset:g} mm")
+            f"  holding margin {b.held_margin * 1000:.1f} mm, pad offset {b.pad_offset:g} mm\n"
+            f"  grip effort: " + ", ".join(f"{chess.piece_symbol(p)} {e:g}" for p, e in sorted(b.effort.items())))
 
 
 def main():

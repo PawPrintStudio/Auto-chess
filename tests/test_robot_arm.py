@@ -20,6 +20,8 @@ class FakeRos:
         self.q = (0.0, *HANGING)
         self.grips = list(grips or [])     # gripper results when closing; default: a piece is held
         self.closes = 0
+        self.efforts = []
+        self.finger = 0.0
         self.points = []
 
     def angles(self):
@@ -34,12 +36,19 @@ class FakeRos:
         self.q = tuple(points[-1])
         return True
 
+    def gripper_position(self):
+        return self.finger
+
     def gripper(self, position, effort=100.0):
         if position == GRIPPER_CLOSED:
             self.closes += 1
+            self.efforts.append(effort)
             if fingertip(self.q)[2] < H - 100:      # up high (start() learning the empty close): nothing there
-                return GRIPPER_CLOSED
-            return self.grips.pop(0) if self.grips else 0.004
+                self.finger = GRIPPER_CLOSED
+            else:
+                self.finger = self.grips.pop(0) if self.grips else 0.004
+            return self.finger
+        self.finger = position
         return position
 
 
@@ -376,3 +385,41 @@ def test_pad_offset_is_saved_and_straight_down_grips_are_unchanged(tmp_path):
         lowest[pad] = H - max(p[2] for p in ros.points)               # the fingertips' lowest point above the board
     assert lowest[0.0] == pytest.approx(b.grip[chess.PAWN], abs=1.0)
     assert lowest[15.0] == pytest.approx(lowest[0.0], abs=1.0)        # the tuned grip heights still mean the same
+
+
+def test_each_piece_gets_its_own_squeeze_and_it_is_saved(tmp_path):
+    b = my_board()
+    b.effort[chess.KNIGHT] = 33.0
+    b.save(tmp_path / "board.json")
+    loaded = Board.load(tmp_path / "board.json")
+    assert loaded.effort[chess.KNIGHT] == 33.0 and loaded.effort[chess.PAWN] == 60.0
+    ros = FakeRos()
+    arm = RealArm(ros, loaded, log=lambda s: None)
+    arm.start()
+    arm.play(chess.Board(), chess.Move.from_uci("g1f3"))
+    assert ros.efforts == [60.0, 33.0]            # the empty test close at start(), then the knight
+
+
+def test_a_piece_that_falls_out_while_carried_is_noticed():
+    ros, asked = FakeRos(), []
+    arm = RealArm(ros, my_board(), log=lambda s: None)
+    arm.ask = asked.append
+    arm.start()
+    ros.gripper_position = lambda: GRIPPER_CLOSED   # after the pick-up the fingers read fully closed: it's gone
+    arm.play(chess.Board(), chess.Move.from_uci("g1f3"))
+    assert asked == ["I couldn't finish my move. The knight fell out of the gripper: look for it on the board. "
+                     "Please move the knight from g1 to f3, and press Done."]
+    assert not arm.holding
+    assert ros.closes == 2                          # it didn't carry on and "put down" nothing
+
+
+def test_a_held_piece_that_stays_put_is_not_flagged():
+    ros = FakeRos(grips=[-0.0095, -0.0095, -0.0095, -0.0095])     # a pawn barely wider than the closed fingers
+    ros.finger = 0.0
+    arm = RealArm(ros, my_board(), log=lambda s: None)
+    arm.ask = pytest.fail
+    arm.start()
+    arm.geo.held_margin = 0.0003
+    arm.empty_limit = GRIPPER_CLOSED + 0.0003      # as start() would have set it from an empty close at -0.0100
+    arm.play(chess.Board(), chess.Move.from_uci("e2e4"))
+    assert not arm.holding

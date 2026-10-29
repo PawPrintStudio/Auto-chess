@@ -258,6 +258,7 @@ def keep_grip_settings(b):
     except (FileNotFoundError, KeyError, ValueError):
         return
     b.grip, b.held_margin, b.gripper_open, b.pad_offset = old.grip, old.held_margin, old.gripper_open, old.pad_offset
+    b.effort = old.effort
 
 
 def shift_saved(mm):

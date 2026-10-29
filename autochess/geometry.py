@@ -73,7 +73,7 @@ def backup(path=None, label="manual"):
 
 class Board:
     def __init__(self, a1, h1, a8, drop, grip=None, travel=TRAVEL, gripper_open=GRIPPER_OPEN,
-                 held_margin=HELD_MARGIN, h8=None, pad_offset=PAD_OFFSET):
+                 held_margin=HELD_MARGIN, h8=None, pad_offset=PAD_OFFSET, effort=None):
         self.a1, self.h1, self.a8 = (np.array(p, float) for p in (a1, h1, a8))
         self.h8 = np.array(h8, float) if h8 is not None else self.h1 + self.a8 - self.a1
         self.drop = np.array(drop, float)
@@ -81,6 +81,11 @@ class Board:
         self.grip.update({chess.PIECE_SYMBOLS.index(k): float(v) for k, v in (grip or {}).items()})
         self.travel, self.gripper_open, self.held_margin = travel, gripper_open, held_margin
         self.pad_offset = float(pad_offset)
+        # How hard to squeeze each piece (the gripper's max_effort). The goal is always "fully closed", so
+        # this is the only strength setting; this controller may ignore it (try_move --effort shows the finger
+        # position, which tells you whether it does).
+        self.effort = {p: GRIP_EFFORT for p in GRIP}
+        self.effort.update({chess.PIECE_SYMBOLS.index(k): float(v) for k, v in (effort or {}).items()})
 
     def at(self, u, v):
         """Board surface point at board coordinates (u, v) in squares: 0 = centre of a1, 7 = centre of
@@ -128,6 +133,7 @@ class Board:
         data = {"a1": self.a1.tolist(), "h1": self.h1.tolist(), "a8": self.a8.tolist(), "h8": self.h8.tolist(),
                 "drop": self.drop.tolist(), "travel": self.travel, "gripper_open": self.gripper_open,
                 "held_margin": self.held_margin, "pad_offset": self.pad_offset,
+                "effort": {chess.PIECE_SYMBOLS[p]: e for p, e in self.effort.items()},
                 "grip": {chess.PIECE_SYMBOLS[p]: h for p, h in self.grip.items()}}
         path.write_text(json.dumps(data, indent=2))
 
@@ -138,4 +144,5 @@ class Board:
             raise FileNotFoundError("the board isn't calibrated yet: python3 -m autochess.calibrate")
         d = json.loads(path.read_text())
         return cls(d["a1"], d["h1"], d["a8"], d["drop"], d.get("grip"), d.get("travel", TRAVEL),
-                   d.get("gripper_open", GRIPPER_OPEN), d.get("held_margin", HELD_MARGIN), d.get("h8"), d.get("pad_offset", PAD_OFFSET))
+                   d.get("gripper_open", GRIPPER_OPEN), d.get("held_margin", HELD_MARGIN), d.get("h8"), d.get("pad_offset", PAD_OFFSET),
+                   d.get("effort"))
