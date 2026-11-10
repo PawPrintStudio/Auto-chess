@@ -14,10 +14,10 @@ It runs on the same Jetson and the same arm as
 (Texas State University). Everything this project inherits from Robo (hardware, Jetson setup,
 arm coordinates, safety rules) is written down in [docs/robo_handoff.md](docs/robo_handoff.md).
 
-> **Status:** the chess core, the screen and the arm are written. Robot vs robot runs on the real
-> arm with no camera needed; in human games you also click your move on the screen until the camera
-> step is done. Tested with a fake arm on a Mac; **not yet run on the real arm.** Still to come: the
-> camera, and the launch and stop scripts.
+> **Status:** the chess core, the screen, the arm and the camera are written. Robot vs robot runs on
+> the real arm with no camera. With `--camera` you only move your piece and press Done: the camera
+> reads your move and finds the board again every game. Tested with a fake arm and synthetic camera
+> pictures on a Mac; **the arm moves and the camera have not been run on the real hardware yet.**
 
 ---
 
@@ -289,6 +289,60 @@ start and the screen says why.
 **Switching off:** the arm goes limp and swings down. Park it first, then hold it while you
 switch off the 12 V.
 
+## Playing with the camera
+
+The camera is the game's eyes. It does three things:
+
+1. **Finds the board by itself** at the start of every game, using four small printed markers on the
+   board's corners. If the board was nudged, turned or put back differently, the arm's idea of where
+   every square is follows it (within 3 cm and 6 degrees; more than that it asks you to look), so you
+   don't calibrate again each time.
+2. **Reads your move.** You move a piece and press Done; the camera works out which legal move you made
+   (captures, castling and en passant included). No clicking on the screen. A hand still over the board
+   is waited out; if it still can't tell, it says "I couldn't see a legal move" and you press Done again.
+3. **Checks the board** at the start of your turn: if a piece isn't where the game says (the arm
+   dropped one, say) the screen names the squares.
+
+It learns the colours of the board and of each side's pieces from the starting position at the start of
+every game, so any pieces will do as long as the two sides differ in colour from each other and from the
+squares (yours are pink and green on wood).
+
+**Set it up (once):**
+
+1. **Print and tape the markers.** Print `docs/markers.png` at 100% (no "fit to page"), cut out the four
+   (keep the white margin), and tape one flat near each corner of the board: 0 near a1, 1 near h1, 2 near
+   a8, 3 near h8. They can sit on the board's border or on little cards fixed to its edge. They must never
+   move relative to the board. (`python3 -m autochess.vision.make_markers --size-mm 20` makes bigger ones.)
+2. **Fix the camera** to the frame, looking down at the board. It must see all 64 squares and all four
+   markers, with the arm parked. As straight down as you can: a camera that looks at the board from the
+   side makes tall pieces lean over the squares behind them. Keep the light steady (no sunbeam moving
+   across the board, no glare on the pieces).
+3. **Look at what it sees:** `python3 -m autochess.vision.snap`. It prints which markers it found and saves
+   `data/snap.jpg` with the markers outlined. All four (0, 1, 2, 3) must be found; if not, bring the camera
+   closer, print the markers bigger, or fix the focus. Send me that picture if anything looks wrong.
+4. **Calibrate the arm** (`python3 -m autochess.calibrate`), if you haven't: the camera builds on it.
+5. **Calibrate the camera:** `python3 -m autochess.vision.calibrate_camera`. It shows the picture: click the
+   centre of a1, then h1, a8, h8 (the same corners as the arm calibration). Run `snap` again: the pink
+   grid should sit exactly on the squares. Redo this only if the camera is moved. If only the board moves,
+   nothing needs redoing.
+6. **Test reading moves, with no arm and no screen:** `python3 -m autochess.vision.try_read`. Put the pieces
+   in the starting position, press Enter, then make a move and press Enter: it says which move it saw. Play
+   both sides by hand for a few moves, including a capture, and castling.
+7. **Play:** `python3 -m autochess --pretend --camera` (no arm: the camera reads you, the arm's moves are
+   printed), then `python3 -m autochess --camera` with the arm.
+
+**Limits, so nothing surprises you:**
+
+- The camera must not move after step 5, and the board must stay at the same height (on the same table).
+- A pawn that reaches the last rank is read as a **queen** (the camera can't see which piece it becomes).
+- With three markers visible it still tracks the board (a little less accurately, about 1 mm); with fewer
+  it refuses, and the game doesn't start.
+- The bin for captured pieces isn't tracked: if it moves, `python3 -m autochess.calibrate --bin-only`.
+- A hand coloured like the wood can hide a piece: the camera then says "no move" rather than guessing, and
+  waits for the hand to go. It only ever answers with a legal move.
+- Not done yet: using the camera to centre each grab on the actual piece (pieces are never exactly in the
+  middle of their squares). That needs real pictures from your camera first.
+
 ## How the code is organised
 
 | File | What it does |
@@ -310,6 +364,12 @@ switch off the 12 V.
 | `autochess/robot_arm.py` | Turns a chess move into arm steps (captures, castling, en passant, promotion) and asks for help if one fails |
 | `autochess/backup.py` | Saves, lists and restores copies of the calibration: `python3 -m autochess.backup` |
 | `autochess/try_move.py` | Plays test moves with the real arm and tunes grip heights: `python3 -m autochess.try_move` |
+| `autochess/vision/markers.py` | The four printed board markers (ArUco): drawing the page to print, finding them in a picture |
+| `autochess/vision/tracking.py` | Finds the board from the markers and turns that into the arm's board geometry (the self-calibration) |
+| `autochess/vision/reading.py` | Straightens the board picture, learns the colours, and works out which legal move was made |
+| `autochess/vision/eyes.py` | The camera as the game's eyes: start of game, start of turn, reading the move |
+| `autochess/vision/camera.py` | The camera itself (the BRIO), and stand-ins for tests |
+| `autochess/vision/snap.py`, `calibrate_camera.py`, `try_read.py`, `make_markers.py` | The camera tools: see what it sees, calibrate it, test reading moves, print the markers |
 | `autochess/pretend.py` | A pretend arm and pretend eyes, so everything runs without the robot |
 | `tests/` | Tests (`python -m pytest -q`) |
 
@@ -318,7 +378,7 @@ switch off the 12 V.
 1. ~~Chess core: Stockfish levels, clock, game loop.~~ Done.
 2. ~~Screen: start screen, game screen, saved results and a leaderboard.~~ Done.
 3. ~~Arm: park pose, calibration, pick and place, captures, castling, en passant, promotion.~~ Written; first real-arm test next.
-4. Camera: 4-corner board calibration, spotting the human's move by comparing the board before and after.
+4. ~~Camera: find the board by itself, read the human's move.~~ Written; first real-camera test next.
 5. Put it together on the Jetson, with a launch and a stop script.
 
 ## Safety

@@ -336,6 +336,12 @@ class App:
         g = self.game
         if kind == "preparing":
             self._say(f"{ROBOT_NAME} is moving to its home pose...")
+        elif kind == "looking":
+            self._say(f"{ROBOT_NAME} is looking at the board...")
+        elif kind == "reading":
+            self._say("Looking at the board to see your move...")
+        elif kind == "warning":
+            self._say(data["text"], RED)
         elif kind == "turn":
             p = data["player"]
             if p.kind == "human":

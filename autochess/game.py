@@ -2,6 +2,9 @@
 
 The game runs in its own thread and reports what happens through on_event(kind, data):
   "preparing" the arm is going to its home pose     {}
+  "looking"   the camera is finding the board        {}
+  "reading"   the camera is reading the human's move {}
+  "warning"   the board doesn't look right           {text}
   "turn"      a side is to move                    {side, player}
   "thinking"  the robot is choosing a move         {side}
   "arm"       the arm is playing the robot's move  {side, move, san}
@@ -14,6 +17,10 @@ The arm and the eyes (camera) are passed in, so the same game runs with the real
 camera on the Jetson or with pretend ones anywhere:
   arm.play(board, move)   plays move on the real board (board is the position before it)
   eyes.read_move(board)   the move the human just made, or None
+If the eyes have begin_game(board), begin_turn(board) or read_move(board) the game calls them: at the start
+(find the board, learn the colours; if that fails the game ends before it starts), at the start of each
+human turn (take the "before" picture; returns the squares that look wrong, if any) and when the human
+presses Done (the move they made, or None). The click-the-screen stand-in only has read_move.
 If the arm has a `prepare()` method, the game calls it first, to send the arm to its home pose;
 if that fails the game ends before it starts. If the arm has an `ask` attribute, the game sets it to a function the arm calls when it needs a
 person to finish a move by hand: it shows the text and waits for Done.
@@ -95,12 +102,22 @@ class Game:
                 except Exception as e:      # the arm refused or failed to move: don't start
                     self._finish("*", f"The arm couldn't get to its home pose: {e}")
                     return
+            if self.eyes is not None and hasattr(self.eyes, "begin_game"):
+                self._emit("looking")
+                try:
+                    self.eyes.begin_game(self.board)
+                except Exception as e:      # no board found, or the pieces aren't set up: don't start
+                    self._finish("*", f"The camera can't be used: {e}")
+                    return
             while self.result is None:
                 if self._interrupted():
                     break
                 side = self.board.turn
                 player = self.players[side]
+                warning = self._look_at_board() if player.kind == "human" else None
                 self._emit("turn", side=side, player=player)
+                if warning:
+                    self._emit("warning", text=warning)
                 move = self._robot_turn(side, player) if player.kind == "robot" else self._human_turn(side)
                 if move is None:
                     break
@@ -130,6 +147,19 @@ class Game:
         self.arm.play(self.board, move)
         return move
 
+    def _look_at_board(self):
+        """Start of the human's turn, before it's announced (so a fast hand can't beat the camera): the
+        camera takes the picture their move will be compared with. Returns a warning to show if the robot's
+        last move left the board looking wrong, else None."""
+        if self.eyes is None or not hasattr(self.eyes, "begin_turn"):
+            return None
+        try:
+            wrong = self.eyes.begin_turn(self.board)
+        except Exception as e:
+            return f"The camera had a problem: {e}"
+        return ("The board doesn't look right at " + ", ".join(wrong) + ". Please fix it before you move."
+                if wrong else None)
+
     def _human_turn(self, side):
         self._done.clear()
         self.clock.run(side)
@@ -143,6 +173,7 @@ class Game:
                 continue
             self._done.clear()
             self.clock.pause()
+            self._emit("reading")
             move = self.eyes.read_move(self.board) if self.eyes else None
             if move is not None and move in self.board.legal_moves:
                 return move

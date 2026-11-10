@@ -48,13 +48,14 @@ def printable_sheet(size_mm=15.0, dpi=300):
     page = np.full((int(11 * dpi), int(8.5 * dpi)), 255, np.uint8)
     cell = max(1, round(size_mm / 25.4 * dpi / 6))
     side, margin = cell * 6, cell
-    cv2.putText(page, "Auto-chess board markers: print at 100% (no 'fit to page'), cut out each square.",
-                (int(0.6 * dpi), int(0.8 * dpi)), cv2.FONT_HERSHEY_SIMPLEX, dpi / 150, 0, max(2, dpi // 150))
-    cv2.putText(page, f"Marker size {size_mm:g} mm. Tape one flat on the board near each corner, all four never "
-                      f"moving relative to the board.", (int(0.6 * dpi), int(1.2 * dpi)),
-                cv2.FONT_HERSHEY_SIMPLEX, dpi / 220, 0, max(1, dpi // 220))
+    lines = ["Auto-chess board markers",
+             f"Print at 100% (no 'fit to page'). Marker size {size_mm:g} mm. Cut each one out, keeping its white margin.",
+             "Tape one flat on the board near each corner: all four must never move relative to the board."]
+    for i, text in enumerate(lines):
+        cv2.putText(page, text, (int(0.6 * dpi), int((0.7 + 0.35 * i) * dpi)), cv2.FONT_HERSHEY_SIMPLEX,
+                    dpi / 200 if i == 0 else dpi / 420, 0, max(2, dpi // 200) if i == 0 else max(1, dpi // 300))
     for row in range(2):
-        y = int((1.8 + row * 2.6) * dpi)
+        y = int((2.1 + row * 2.6) * dpi)
         for k, mid in enumerate(BOARD_IDS):
             x = int((0.6 + k * 1.9) * dpi)
             tile = np.full((side + 2 * margin, side + 2 * margin), 255, np.uint8)

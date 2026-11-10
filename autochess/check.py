@@ -173,6 +173,26 @@ def robo_running():
     return "nothing else is using the arm"
 
 
+def aruco():
+    import cv2
+    import numpy as np
+    if not hasattr(cv2, "aruco"):
+        raise RuntimeError(f"OpenCV {cv2.__version__} can't read the board markers (no aruco module): "
+                           f"pip3 install --user 'opencv-contrib-python<4.12' (NumPy stays below 2)")
+    from .vision import markers
+    img = np.full((220, 220), 255, np.uint8)
+    img[60:160, 60:160] = markers.marker_image(0, 100)
+    if 0 not in markers.detect(img):
+        raise RuntimeError("OpenCV's marker reader didn't find a test marker")
+    return f"OpenCV {cv2.__version__} reads the board markers"
+
+
+def camera_calibrated():
+    from .vision.tracking import CameraCal
+    cal = CameraCal.load()
+    return f"calibrated {cal.saved}"
+
+
 def main():
     jetson = platform.system() == "Linux" and Path("/etc/nv_tegra_release").exists()
     print(f"Auto-chess check on {platform.node()} ({'Jetson' if jetson else platform.system()})\n")
@@ -183,6 +203,7 @@ def main():
     check("OpenCV", opencv_pkg)
     check("Tkinter", tk_pkg)
     check("Chess-piece font", piece_font, warn_only=True)
+    check("Camera markers (OpenCV)", aruco, warn_only=True)
     print("\nChess")
     check("Stockfish", stockfish)
     check("A full pretend game", pretend_game)
@@ -195,6 +216,7 @@ def main():
         print("\nHardware and other programs (warnings are fine until the robot is set up)")
         check("Arm port", arm_port, warn_only=True)
         check("Camera", camera, warn_only=True)
+        check("Camera calibrated", camera_calibrated, warn_only=True)
         check("Power mode", power_mode, warn_only=True)
         check("Robo stopped", robo_running, warn_only=True)
     else:

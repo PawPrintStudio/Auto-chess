@@ -205,3 +205,112 @@ def test_eyes_say_which_squares_look_wrong_and_refuse_a_bad_start():
     with pytest.raises(VisionError, match="at least three"):
         CameraEyes(ImageCamera([sim.render(board, marker_ids=(0, 1))]), cal, make_geo(),
                    log=lambda s: None).begin_game(board)
+
+
+def test_a_whole_game_with_the_camera_as_the_eyes():
+    """The human's moves come from the camera: a pretend arm plays the robot's, and a sim camera looks at
+    whatever the 'physical' board holds. Includes a robot move the arm 'fumbles' (one piece left misplaced)."""
+    import queue
+    import shutil
+
+    from autochess.engine import Engine, Level
+    from autochess.game import Game, Player
+    from autochess.pretend import PretendArm
+    if not shutil.which("stockfish"):
+        pytest.skip("Stockfish not installed")
+    physical = chess.Board()                                   # what is really on the table
+    n = [0]
+
+    def picture():
+        n[0] += 1
+        return sim.render(physical, seed=n[0])
+
+    class Arm(PretendArm):
+        def play(self, board, move):
+            physical.push(move)                                # the arm moves the real piece
+
+    engine = Engine(levels={"Fast": Level("Fast", 0, 0.01, 1)})
+    events = queue.Queue()
+    try:
+        eyes = CameraEyes(ImageCamera(picture), make_cal(), make_geo(), log=lambda s: None)
+        game = Game(Player("human", "Ana"), Player("robot", "Robo", "Fast"), 10, engine, Arm(0, lambda s: None), eyes,
+                    on_event=lambda kind, data: events.put((kind, data)))
+        game.start()
+        seen = []
+        for san in ("e2e4", "g1f3", "f1c4"):                   # the human's three moves, read by the camera
+            while True:
+                kind, data = events.get(timeout=20)
+                seen.append(kind)
+                if kind == "turn" and data["player"].kind == "human":
+                    break
+            physical.push(chess.Move.from_uci(san))            # the human moves a piece...
+            game.press_done()                                  # ...and presses Done
+            while True:
+                kind, data = events.get(timeout=20)
+                seen.append(kind)
+                if kind == "moved" and data["side"] == chess.WHITE:
+                    assert data["move"] == chess.Move.from_uci(san)
+                    break
+        game.stop()
+        game.join(10)
+    finally:
+        engine.close()
+    assert seen[0] == "looking" and "reading" in seen and "warning" not in seen
+    assert game.board.move_stack[0::2] == [chess.Move.from_uci(m) for m in ("e2e4", "g1f3", "f1c4")]
+
+
+def test_the_camera_tools_work_end_to_end(tmp_path, monkeypatch, capsys):
+    """make_markers -> calibrate_camera (--points) -> snap -> try_read, all on synthetic pictures."""
+    import builtins
+
+    import cv2
+
+    import autochess.vision.calibrate_camera as calibrate_camera
+    import autochess.vision.make_markers as make_markers
+    import autochess.vision.snap as snap
+    import autochess.vision.tracking as tracking
+    import autochess.vision.try_read as try_read
+
+    sheet = tmp_path / "markers.png"
+    monkeypatch.setattr("sys.argv", ["make_markers", "--out", str(sheet)])
+    make_markers.main()
+    assert sorted(markers.detect(cv2.imread(str(sheet))[: 3300 // 2])) == [0, 1, 2, 3]    # the printable page is readable
+
+    monkeypatch.setattr(tracking, "CAMERA_FILE", tmp_path / "camera.json")
+    monkeypatch.setattr(calibrate_camera, "CameraCal", tracking.CameraCal)
+    picture = tmp_path / "empty.jpg"
+    cv2.imwrite(str(picture), sim.render(None, seed=7))
+    clicks = " ".join(f"{x:.1f},{y:.1f}" for x, y in sim.world_to_frame(sim.truth_corners()))
+    monkeypatch.setattr("sys.argv", ["calibrate_camera", "--image", str(picture), "--points", clicks])
+    calibrate_camera.main()
+    cal = tracking.CameraCal.load(tmp_path / "camera.json")
+    assert sorted(cal.markers) == [0, 1, 2, 3]
+
+    out = tmp_path / "snap.jpg"
+    monkeypatch.setattr(snap.CameraCal, "load", classmethod(lambda cls, path=None: cal))
+    monkeypatch.setattr("sys.argv", ["snap", "--image", str(picture), "--out", str(out)])
+    snap.main()
+    assert out.exists() and "Markers found: [0, 1, 2, 3]" in capsys.readouterr().out
+
+    physical = chess.Board()
+    seed = [100]
+
+    def picture_now():
+        seed[0] += 1
+        return sim.render(physical, seed=seed[0])
+    monkeypatch.setattr(try_read, "Camera", lambda device=0: ImageCamera(picture_now))
+    monkeypatch.setattr(try_read.CameraCal, "load", classmethod(lambda cls, path=None: cal))
+    actions = iter([lambda: None, lambda: physical.push_uci("e2e4"), lambda: physical.push_uci("c7c5"),
+                    lambda: physical.push_uci("g1f3"), "q"])
+
+    def fake_input(prompt=""):
+        act = next(actions)
+        if act == "q":
+            return "q"
+        act()
+        return ""
+    monkeypatch.setattr(builtins, "input", fake_input)
+    monkeypatch.setattr("sys.argv", ["try_read"])
+    try_read.main()
+    said = capsys.readouterr().out
+    assert "I saw e4" in said and "I saw c5" in said and "I saw Nf3" in said
