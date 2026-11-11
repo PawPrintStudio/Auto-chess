@@ -309,7 +309,7 @@ squares (yours are pink and green on wood).
 
 **Set it up (once):**
 
-1. **Print and tape the markers.** Print `docs/markers.png` at 100% (no "fit to page"), cut out the four
+1. **Print and tape the markers.** Print `docs/markers.pdf` at 100% ("Actual size", not "Fit to page"), cut out the four
    (keep the white margin), and tape one flat near each corner of the board: 0 near a1, 1 near h1, 2 near
    a8, 3 near h8. They can sit on the board's border or on little cards fixed to its edge. They must never
    move relative to the board. (`python3 -m autochess.vision.make_markers --size-mm 20` makes bigger ones.)

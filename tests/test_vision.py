@@ -275,6 +275,10 @@ def test_the_camera_tools_work_end_to_end(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("sys.argv", ["make_markers", "--out", str(sheet)])
     make_markers.main()
     assert sorted(markers.detect(cv2.imread(str(sheet))[: 3300 // 2])) == [0, 1, 2, 3]    # the printable page is readable
+    pdf = (tmp_path / "markers.pdf").read_bytes()                                         # ...and so is the PDF
+    assert pdf.startswith(b"%PDF-1.4") and b"/MediaBox [0 0 612 792]" in pdf
+    xref = int(pdf.rsplit(b"startxref\n", 1)[1].split()[0])
+    assert pdf[xref:xref + 4] == b"xref"                                                  # the table points at itself
 
     monkeypatch.setattr(tracking, "CAMERA_FILE", tmp_path / "camera.json")
     monkeypatch.setattr(calibrate_camera, "CameraCal", tracking.CameraCal)
